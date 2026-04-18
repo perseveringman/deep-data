@@ -37,22 +37,19 @@ function TrendBadge({ trend, size = 'sm' }: { trend: 'up' | 'down' | 'stable'; s
   const cls = size === 'xs' ? 'h-3 w-3' : 'h-3.5 w-3.5'
   if (trend === 'up')
     return (
-      <span className="inline-flex items-center gap-0.5 rounded-full bg-green-50 px-1.5 py-0.5 text-[10px] font-medium text-green-700 dark:bg-green-950 dark:text-green-400">
+      <span className="inline-flex items-center gap-0.5 text-[11px] font-medium text-foreground/70">
         <TrendingUp className={cls} />
-        上升
       </span>
     )
   if (trend === 'down')
     return (
-      <span className="inline-flex items-center gap-0.5 rounded-full bg-red-50 px-1.5 py-0.5 text-[10px] font-medium text-red-700 dark:bg-red-950 dark:text-red-400">
+      <span className="inline-flex items-center gap-0.5 text-[11px] font-medium text-muted-foreground/60">
         <TrendingDown className={cls} />
-        下降
       </span>
     )
   return (
-    <span className="inline-flex items-center gap-0.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+    <span className="inline-flex items-center gap-0.5 text-[11px] font-medium text-muted-foreground/40">
       <Minus className={cls} />
-      平稳
     </span>
   )
 }
@@ -106,10 +103,7 @@ function TagGroup({
   }, [children, trendFilter, sortMode])
 
   return (
-    <Card
-      className="overflow-hidden border-l-4 p-0"
-      style={{ borderLeftColor: tag.color }}
-    >
+    <Card className="overflow-hidden p-0">
       {/* 父标签头 */}
       <div className="flex items-center gap-3 px-4 py-3">
         <button
@@ -121,10 +115,7 @@ function TagGroup({
         </button>
 
         <Link href={`/tags/${tag.slug}`} className="flex min-w-0 flex-1 items-center gap-3 group">
-          <span
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-sm font-bold text-white shadow-sm"
-            style={{ backgroundColor: tag.color }}
-          >
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border bg-muted/40 font-serif text-sm font-semibold text-foreground/80">
             {tag.name.charAt(0)}
           </span>
 
@@ -156,7 +147,7 @@ function TagGroup({
             {visibleChildren.map(child => (
               <Link key={child.id} href={`/tags/${child.slug}`}>
                 <div className="group flex items-center gap-2 rounded-md border border-transparent bg-background px-2.5 py-2 transition-all hover:border-border hover:shadow-sm">
-                  <Hash className="h-3.5 w-3.5 shrink-0" style={{ color: child.color }} />
+                  <Hash className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                   <span className="truncate text-sm font-medium">{child.name}</span>
                   <TrendBadge trend={child.trending} size="xs" />
                   <span className="ml-auto shrink-0 text-xs tabular-nums text-muted-foreground">
@@ -242,10 +233,10 @@ export default function TagsPage() {
           </Card>
           <Card className="p-4">
             <div className="flex items-center gap-1 text-xs text-muted-foreground">
-              <Flame className="h-3 w-3 text-orange-500" />
+              <TrendingUp className="h-3 w-3" />
               热度上升
             </div>
-            <div className="mt-1 font-serif text-2xl font-bold tabular-nums text-green-600 dark:text-green-500">
+            <div className="mt-1 font-serif text-2xl font-bold tabular-nums">
               {trendingUpCount}
             </div>
           </Card>
@@ -254,24 +245,18 @@ export default function TagsPage() {
         {/* 热门标签快捷入口 */}
         <div>
           <div className="mb-2 flex items-center gap-2 text-sm font-medium">
-            <Flame className="h-4 w-4 text-orange-500" />
             <span>热门标签</span>
-            <span className="text-xs text-muted-foreground">点击直达</span>
+            <span className="text-xs font-normal text-muted-foreground">点击直达</span>
           </div>
           <div className="flex flex-wrap gap-2">
             {trendingTags.map(tag => (
               <Link key={tag.id} href={`/tags/${tag.slug}`}>
                 <Badge
                   variant="outline"
-                  className="cursor-pointer gap-1.5 px-2.5 py-1 text-sm transition-colors hover:bg-muted"
-                  style={{ borderColor: tag.color }}
+                  className="cursor-pointer gap-1.5 px-2.5 py-1 text-sm font-normal transition-colors hover:bg-muted"
                 >
-                  <span
-                    className="h-2 w-2 rounded-full"
-                    style={{ backgroundColor: tag.color }}
-                  />
                   {tag.name}
-                  <span className="text-xs text-muted-foreground">{tag.contentCount}</span>
+                  <span className="text-xs tabular-nums text-muted-foreground">{tag.contentCount}</span>
                 </Badge>
               </Link>
             ))}
