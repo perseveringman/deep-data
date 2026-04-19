@@ -4,22 +4,70 @@ import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import { searchMockResults, channels, keywords, opinions } from '@/lib/mock-data'
-import { Hash, User, MessageSquare, TrendingUp, Radio, Search } from 'lucide-react'
-import { Suspense } from 'react'
+import { Hash, User, MessageSquare, TrendingUp, Radio, Search, Loader2 } from 'lucide-react'
+import { Suspense, useState, useEffect } from 'react'
+
+// Proxy through Next.js API route to avoid CORS / exposing key
+const PODADMIN_API = ''
+
+interface SearchResult {
+  id: string
+  type: string
+  title: string
+  snippet: string
+  relevance: number
+  channelId?: string
+}
 
 function SearchContent() {
   const searchParams = useSearchParams()
   const query = searchParams.get('q') || ''
   const type = searchParams.get('type') || 'all'
 
-  // 模拟搜索结果过滤
-  const filteredResults = query
-    ? searchMockResults.filter(
+  const [filteredResults, setFilteredResults] = useState<SearchResult[]>([])
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!query) {
+      setFilteredResults(searchMockResults)
+      return
+    }
+
+    async function doSearch() {
+      setLoading(true)
+      try {
+        const res = await fetch(
+          `${PODADMIN_API}/api/podadmin/search?q=${encodeURIComponent(query)}&type=document&page_size=30`
+        )
+        if (res.ok) {
+          const data = await res.json()
+          const items = (data.items || []).map((doc: any, idx: number) => ({
+            id: String(doc.id || idx),
+            type: doc.source_type === 'youtube' ? 'channel' : 'topic',
+            title: doc.title || '(无标题)',
+            snippet: doc.summary_excerpt || doc.podcast_title || '',
+            relevance: Math.max(50, 100 - idx * 3),
+            channelId: doc.source ? `${doc.source_type}-${doc.source}` : undefined,
+          }))
+          if (items.length > 0) {
+            setFilteredResults(items)
+            setLoading(false)
+            return
+          }
+        }
+      } catch { /* fall through to mock */ }
+
+      // Fall back to local mock filter
+      const mockResults = searchMockResults.filter(
         (r) =>
           r.title.toLowerCase().includes(query.toLowerCase()) ||
           r.snippet.toLowerCase().includes(query.toLowerCase())
       )
-    : searchMockResults
+      setFilteredResults(mockResults)
+      setLoading(false)
+    }
+    doSearch()
+  }, [query])
 
   // 如果是查看所有观点
   const showAllOpinions = type === 'opinions'

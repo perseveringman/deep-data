@@ -1,13 +1,58 @@
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import { ChannelCard } from '@/components/channel-card'
-import { channels } from '@/lib/mock-data'
+import { channels as mockChannels, type Channel } from '@/lib/mock-data'
 import { Youtube, Podcast } from 'lucide-react'
 
-export default function ChannelsPage() {
+const API_BASE = process.env.PODADMIN_API_URL || 'http://localhost:8000'
+const API_KEY = process.env.PODADMIN_API_KEY || ''
+
+async function fetchChannels(): Promise<Channel[]> {
+  try {
+    // Fetch channel catalog from podadmin
+    const res = await fetch(`${API_BASE}/api/v1/channels`, {
+      headers: { 'X-API-Key': API_KEY },
+      next: { revalidate: 60 },
+    })
+    if (!res.ok) return mockChannels
+
+    const data = await res.json()
+    const channelInfos = data.channels || []
+
+    // Also fetch per-source breakdown
+    const srcRes = await fetch(`${API_BASE}/api/v1/sources`, {
+      headers: { 'X-API-Key': API_KEY },
+      next: { revalidate: 60 },
+    })
+    const srcData = srcRes.ok ? await srcRes.json() : { sources: [] }
+    const sources = srcData.sources || []
+
+    // Build Channel objects from sources
+    const mapped: Channel[] = sources.map((s: any, idx: number) => ({
+      id: `${s.source_type}-${s.source || idx}`,
+      name: s.source || s.source_type,
+      platform: s.source_type === 'youtube' ? 'youtube' : 'podcast',
+      description: '',
+      subscriberCount: 0,
+      videoCount: s.count || 0,
+      tags: [],
+      lastUpdated: '',
+      topics: [],
+      recentVideos: [],
+      engagementData: [],
+    }))
+
+    return mapped.length > 0 ? mapped : mockChannels
+  } catch {
+    return mockChannels
+  }
+}
+
+export default async function ChannelsPage() {
+  const channels = await fetchChannels()
   const youtubeChannels = channels.filter(c => c.platform === 'youtube')
   const podcastChannels = channels.filter(c => c.platform === 'podcast')
 
-  const totalSubscribers = channels.reduce((sum, c) => sum + c.subscriberCount, 0)
+  const totalSubscribers = channels.reduce((sum, c) => sum + (c.subscriberCount || 0), 0)
   const totalContent = channels.reduce((sum, c) => sum + c.videoCount, 0)
 
   const formatNumber = (num: number) => {

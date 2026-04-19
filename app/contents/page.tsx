@@ -1,21 +1,82 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import Link from 'next/link'
 import { format } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
-import { Youtube, Podcast, Clock, Eye, ThumbsUp, Play, LayoutGrid, List, FileText, Tag, ChevronDown, X } from 'lucide-react'
+import { Youtube, Podcast, Clock, Eye, ThumbsUp, Play, LayoutGrid, List, FileText, Tag, ChevronDown, X, Loader2 } from 'lucide-react'
 import { SidebarTrigger } from '@/components/ui/sidebar'
-import { contentItems } from '@/lib/mock-data'
+import { contentItems as mockContentItems, type ContentItem } from '@/lib/mock-data'
 
 type FilterType = 'all' | 'youtube' | 'podcast'
 type ViewType = 'grid' | 'list'
+
+// Proxy through Next.js API route to avoid CORS / exposing key
+const PODADMIN_API = ''
+
+function formatDuration(seconds: number | null): string {
+  if (!seconds) return '0:00'
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  const s = seconds % 60
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+  return `${m}:${String(s).padStart(2, '0')}`
+}
 
 export default function ContentsPage() {
   const [typeFilter, setTypeFilter] = useState<FilterType>('all')
   const [channelFilter, setChannelFilter] = useState<string | null>(null)
   const [view, setView] = useState<ViewType>('list')
   const [showChannelDropdown, setShowChannelDropdown] = useState(false)
+
+  // Remote data state
+  const [contentItems, setContentItems] = useState<ContentItem[]>(mockContentItems)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function fetchDocs() {
+      try {
+        // Fetch podcast + youtube documents from podadmin
+        const sourceTypes = typeFilter === 'all'
+          ? ['podcast', 'youtube']
+          : [typeFilter]
+
+        const results = await Promise.all(
+          sourceTypes.map(st =>
+            fetch(`${PODADMIN_API}/api/podadmin/documents?source_type=${st}&limit=100`)
+              .then(r => r.ok ? r.json() : null)
+          )
+        )
+
+        const docs = results.flatMap(r => r?.items || [])
+
+        if (docs.length > 0) {
+          const mapped: ContentItem[] = docs.map((doc: any) => ({
+            id: String(doc.id),
+            type: doc.source_type === 'youtube' ? 'youtube' : 'podcast',
+            title: doc.title || '(无标题)',
+            channelId: doc.source || doc.source_type,
+            channelName: doc.podcast_title || doc.source || doc.source_type,
+            publishedAt: doc.published_at ? doc.published_at.slice(0, 10) : '',
+            duration: formatDuration(doc.duration_seconds),
+            durationSeconds: doc.duration_seconds || 0,
+            coverUrl: doc.cover_url || undefined,
+            audioUrl: doc.audio_url || undefined,
+            tags: doc.tags || [],
+            summary: doc.summary_excerpt || '',
+            hasTranscript: doc.has_transcript,
+            contentFile: '',
+          }))
+          setContentItems(mapped)
+        }
+      } catch {
+        // Fall back to mock data (already set as default)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchDocs()
+  }, [typeFilter])
 
   // 获取所有频道列表，按类型分组
   const channelsByType = useMemo(() => {
@@ -36,7 +97,7 @@ export default function ContentsPage() {
       youtube: Array.from(youtubeChannels.entries()).map(([id, data]) => ({ id, ...data })),
       podcast: Array.from(podcastChannels.entries()).map(([id, data]) => ({ id, ...data }))
     }
-  }, [])
+  }, [contentItems])
 
   // 所有频道扁平列表
   const allChannels = useMemo(() => {
@@ -50,13 +111,13 @@ export default function ContentsPage() {
       }
     })
     return Array.from(channels.entries()).map(([id, data]) => ({ id, ...data }))
-  }, [])
+  }, [contentItems])
 
   // 过滤内容
   const filteredItems = useMemo(() => {
     let items = contentItems
     
-    // 按类型过滤
+    // 按类型过滤 (already filtered in the fetch, but still filter locally for channel)
     if (typeFilter !== 'all') {
       items = items.filter(item => item.type === typeFilter)
     }
@@ -67,7 +128,7 @@ export default function ContentsPage() {
     }
     
     return items
-  }, [typeFilter, channelFilter])
+  }, [contentItems, typeFilter, channelFilter])
   
   const youtubeCount = contentItems.filter(c => c.type === 'youtube').length
   const podcastCount = contentItems.filter(c => c.type === 'podcast').length
