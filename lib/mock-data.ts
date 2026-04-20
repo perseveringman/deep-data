@@ -2,6 +2,8 @@
 export interface ContentItem {
   id: string
   type: 'youtube' | 'podcast'
+  playbackKind?: 'video' | 'audio' | 'none'
+  playbackUrl?: string
   title: string
   channelId: string
   channelName: string

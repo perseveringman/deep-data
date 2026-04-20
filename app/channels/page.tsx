@@ -1,16 +1,14 @@
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import { ChannelCard } from '@/components/channel-card'
 import { channels as mockChannels, type Channel } from '@/lib/mock-data'
+import { getReadApiHeaders, PODADMIN_API_BASE } from '@/lib/api'
 import { Youtube, Podcast } from 'lucide-react'
-
-const API_BASE = process.env.PODADMIN_API_URL || 'http://localhost:8000'
-const API_KEY = process.env.PODADMIN_API_KEY || ''
 
 async function fetchChannels(): Promise<Channel[]> {
   try {
     // Fetch channel catalog from podadmin
-    const res = await fetch(`${API_BASE}/api/v1/channels`, {
-      headers: { 'X-API-Key': API_KEY },
+    const res = await fetch(`${PODADMIN_API_BASE}/api/v1/channels`, {
+      headers: getReadApiHeaders(),
       next: { revalidate: 60 },
     })
     if (!res.ok) return mockChannels
@@ -19,8 +17,8 @@ async function fetchChannels(): Promise<Channel[]> {
     const channelInfos = data.channels || []
 
     // Also fetch per-source breakdown
-    const srcRes = await fetch(`${API_BASE}/api/v1/sources`, {
-      headers: { 'X-API-Key': API_KEY },
+    const srcRes = await fetch(`${PODADMIN_API_BASE}/api/v1/sources`, {
+      headers: getReadApiHeaders(),
       next: { revalidate: 60 },
     })
     const srcData = srcRes.ok ? await srcRes.json() : { sources: [] }

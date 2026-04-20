@@ -3,12 +3,10 @@ import { notFound } from 'next/navigation'
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import { EngagementChart } from '@/components/charts/engagement-chart'
 import { getChannelDetail, opinions, type ChannelDetail } from '@/lib/mock-data'
+import { getDocumentRouteId, getReadApiHeaders, PODADMIN_API_BASE } from '@/lib/api'
 import { ArrowLeft, Youtube, Podcast, ExternalLink, Play, Clock } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
-
-const API_BASE = process.env.PODADMIN_API_URL || 'http://localhost:8000'
-const API_KEY = process.env.PODADMIN_API_KEY || ''
 
 async function fetchChannelFromAPI(id: string): Promise<ChannelDetail | null> {
   try {
@@ -19,8 +17,8 @@ async function fetchChannelFromAPI(id: string): Promise<ChannelDetail | null> {
 
     // Fetch documents for this source to build channel detail
     const res = await fetch(
-      `${API_BASE}/api/v1/documents?source_type=${sourceType}&source=${encodeURIComponent(source)}&limit=20`,
-      { headers: { 'X-API-Key': API_KEY }, next: { revalidate: 60 } }
+      `${PODADMIN_API_BASE}/api/v1/documents?source_type=${sourceType}&source=${encodeURIComponent(source)}&limit=20`,
+      { headers: getReadApiHeaders(), next: { revalidate: 60 } }
     )
     if (!res.ok) return null
     const data = await res.json()
@@ -41,7 +39,7 @@ async function fetchChannelFromAPI(id: string): Promise<ChannelDetail | null> {
 
     // Map recent docs to recentVideos
     const recentVideos = docs.slice(0, 5).map((d: any) => ({
-      id: String(d.id),
+      id: getDocumentRouteId(d),
       title: d.title || '',
       publishedAt: d.published_at ? d.published_at.slice(0, 10) : '',
       views: 0,
@@ -53,8 +51,8 @@ async function fetchChannelFromAPI(id: string): Promise<ChannelDetail | null> {
 
     // Fetch total count from sources endpoint
     const srcRes = await fetch(
-      `${API_BASE}/api/v1/sources?source_type=${sourceType}`,
-      { headers: { 'X-API-Key': API_KEY }, next: { revalidate: 60 } }
+      `${PODADMIN_API_BASE}/api/v1/sources?source_type=${sourceType}`,
+      { headers: getReadApiHeaders(), next: { revalidate: 60 } }
     )
     const srcData = srcRes.ok ? await srcRes.json() : { sources: [] }
     const matchedSource = (srcData.sources || []).find((s: any) => s.source === source)

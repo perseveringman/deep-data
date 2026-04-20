@@ -42,6 +42,16 @@ export interface PodcastContent {
   transcript: { speaker?: string; startMs: number; text: string }[]
 }
 
+function stripArchiveMarkers(text: string): string {
+  return text
+    .replace(
+      /^<!--\s*YOUTUBE_(?:TRANSCRIPT|COMMENTS)_(?:START|END)\s*-->\s*$/gm,
+      ''
+    )
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
 // 解析 frontmatter
 function parseFrontmatter(content: string): { frontmatter: Record<string, any>; body: string } {
   const fmMatch = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/)
@@ -121,13 +131,12 @@ function parseTimeToSeconds(time: string): number {
 }
 
 // 解析 YouTube 时间戳章节
-function parseTimestamps(body: string): { time: string; seconds: number; title: string }[] {
+function parseTimestamps(text: string): { time: string; seconds: number; title: string }[] {
   const timestamps: { time: string; seconds: number; title: string }[] = []
-  const lines = body.split('\n')
+  const lines = text.split('\n')
 
   for (const line of lines) {
-    // 匹配格式: "00:00:00 – Title" 或 "00:00:00 - Title"
-    const match = line.match(/^(\d{1,2}:\d{2}:\d{2})\s*[–-]\s*(.+)$/)
+    const match = line.match(/^(?:[-*•]\s*)?(\d{1,2}:\d{2}(?::\d{2})?)\s*(?:[–—-]\s*|\s+)(.+)$/)
     if (match) {
       timestamps.push({
         time: match[1],
@@ -140,18 +149,61 @@ function parseTimestamps(body: string): { time: string; seconds: number; title: 
   return timestamps
 }
 
+function parseCueTimeToMs(time: string): number | null {
+  const match = time.trim().match(/^(?:(\d+):)?(\d{2}):(\d{2})(?:\.(\d{3}))?$/)
+  if (!match) return null
+
+  const [, hours = '0', minutes, seconds, milliseconds = '0'] = match
+  return (
+    parseInt(hours, 10) * 3_600_000 +
+    parseInt(minutes, 10) * 60_000 +
+    parseInt(seconds, 10) * 1_000 +
+    parseInt(milliseconds, 10)
+  )
+}
+
+function extractTranscriptSection(body: string): string {
+  const transcriptMatch = body.match(
+    /## Transcript\n\n([\s\S]*?)(?=\n<!-- YOUTUBE_TRANSCRIPT_END -->|\n##|$)/
+  )
+  return transcriptMatch ? stripArchiveMarkers(transcriptMatch[1]) : ''
+}
+
 // 解析 YouTube 字幕
 function parseYouTubeTranscript(body: string): { startMs: number; text: string }[] {
   const transcript: { startMs: number; text: string }[] = []
 
-  // 找到 Transcript 部分
-  const transcriptMatch = body.match(/## Transcript\n\n([\s\S]*?)(?=\n##|$)/)
-  if (!transcriptMatch) return transcript
+  const transcriptText = extractTranscriptSection(body)
+  if (!transcriptText) return transcript
 
-  const transcriptText = transcriptMatch[1]
-  // YouTube 字幕是连续的文本，我们按段落分割并估算时间
+  const cueBlocks = transcriptText.split(/\n\s*\n/).map(block => block.trim()).filter(Boolean)
+  for (const block of cueBlocks) {
+    const lines = block.split('\n').map(line => line.trim()).filter(Boolean)
+    if (lines.length < 2) continue
+
+    const timingMatch = lines[0].match(/^((?:(?:\d+:)?\d{2}:\d{2}(?:\.\d{3})?))\s+-->\s+((?:(?:\d+:)?\d{2}:\d{2}(?:\.\d{3})?))/)
+    if (!timingMatch) continue
+
+    const startMs = parseCueTimeToMs(timingMatch[1])
+    if (startMs === null) continue
+
+    const text = lines
+      .slice(1)
+      .map(line => line.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim())
+      .filter(Boolean)
+      .join(' ')
+
+    if (!text) continue
+
+    transcript.push({ startMs, text })
+  }
+
+  if (transcript.length > 0) {
+    return transcript
+  }
+
+  // 兼容旧的纯文本 Transcript，按段落估算时间
   const paragraphs = transcriptText.split('\n\n').filter(p => p.trim())
-
   paragraphs.forEach((para, index) => {
     transcript.push({
       startMs: index * 30000, // 估算每段30秒
@@ -166,11 +218,10 @@ function parseYouTubeTranscript(body: string): { startMs: number; text: string }
 function parsePodcastTranscript(body: string): { speaker?: string; startMs: number; text: string }[] {
   const transcript: { speaker?: string; startMs: number; text: string }[] = []
 
-  // 找到 Transcript 部分
-  const transcriptMatch = body.match(/## Transcript\n\n([\s\S]*?)(?=\n##|$)/)
-  if (!transcriptMatch) return transcript
+  const transcriptText = extractTranscriptSection(body)
+  if (!transcriptText) return transcript
 
-  const lines = transcriptMatch[1].split('\n').filter(l => l.trim())
+  const lines = transcriptText.split('\n').filter(l => l.trim())
 
   for (const line of lines) {
     // 匹配格式: [Speaker 1] `9` 文本
@@ -227,12 +278,13 @@ function parseKeywords(body: string): string[] {
 function parseSection(body: string, sectionName: string): string {
   const regex = new RegExp(`## ${sectionName}\\n\\n([\\s\\S]*?)(?=\\n##|$)`)
   const match = body.match(regex)
-  return match ? match[1].trim() : ''
+  return match ? stripArchiveMarkers(match[1]) : ''
 }
 
 // 解析 YouTube 内容
 export function parseYouTubeContent(rawContent: string): YouTubeContent {
   const { frontmatter, body } = parseFrontmatter(rawContent)
+  const description = parseSection(body, 'Description')
 
   return {
     metadata: {
@@ -251,8 +303,8 @@ export function parseYouTubeContent(rawContent: string): YouTubeContent {
       language: frontmatter.language || 'en',
       categories: frontmatter.categories
     },
-    description: parseSection(body, 'Description'),
-    timestamps: parseTimestamps(body),
+    description,
+    timestamps: parseTimestamps(description),
     transcript: parseYouTubeTranscript(body)
   }
 }

@@ -5,57 +5,20 @@ import { getContentById, type ContentItem } from '@/lib/mock-data'
 import { YouTubeReader } from '@/components/readers/youtube-reader'
 import { PodcastReader } from '@/components/readers/podcast-reader'
 import { SidebarTrigger } from '@/components/ui/sidebar'
+import { docToContentItem, getDocument, getDocumentRaw } from '@/lib/api'
 import fs from 'fs'
 import path from 'path'
 
-const API_BASE = process.env.PODADMIN_API_URL || 'http://localhost:8000'
-const API_KEY = process.env.PODADMIN_API_KEY || ''
-
-function formatDuration(seconds: number | null): string {
-  if (!seconds) return '0:00'
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  const s = seconds % 60
-  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-  return `${m}:${String(s).padStart(2, '0')}`
-}
-
 async function fetchFromPodAdmin(id: string): Promise<{ content: ContentItem; markdown: string } | null> {
   try {
-    // Fetch document metadata
-    const docRes = await fetch(`${API_BASE}/api/v1/documents/${id}?include=body`, {
-      headers: { 'X-API-Key': API_KEY },
-      next: { revalidate: 60 },
-    })
-    if (!docRes.ok) return null
-    const doc = await docRes.json()
-
-    const content: ContentItem = {
-      id: String(doc.id),
-      type: doc.source_type === 'youtube' ? 'youtube' : 'podcast',
-      title: doc.title || '(无标题)',
-      channelId: doc.source || doc.source_type,
-      channelName: doc.podcast_title || doc.source || doc.source_type,
-      publishedAt: doc.published_at ? doc.published_at.slice(0, 10) : '',
-      duration: formatDuration(doc.duration_seconds),
-      durationSeconds: doc.duration_seconds || 0,
-      coverUrl: doc.cover_url || undefined,
-      audioUrl: doc.audio_url || undefined,
-      tags: doc.tags || [],
-      summary: doc.summary_excerpt || '',
-      hasTranscript: doc.has_transcript,
-      contentFile: '',
-    }
+    const doc = await getDocument(id, true)
+    const content = docToContentItem(doc)
 
     // Use inline body if available; otherwise fetch raw
     let markdown = doc.body || ''
     if (!markdown) {
       try {
-        const rawRes = await fetch(`${API_BASE}/api/v1/documents/${id}/raw`, {
-          headers: { 'X-API-Key': API_KEY },
-          next: { revalidate: 60 },
-        })
-        if (rawRes.ok) markdown = await rawRes.text()
+        markdown = await getDocumentRaw(id)
       } catch { /* ignore */ }
     }
 

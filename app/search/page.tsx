@@ -3,6 +3,7 @@
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { SidebarTrigger } from '@/components/ui/sidebar'
+import { getDocumentRouteId } from '@/lib/api'
 import { searchMockResults, channels, keywords, opinions } from '@/lib/mock-data'
 import { Hash, User, MessageSquare, TrendingUp, Radio, Search, Loader2 } from 'lucide-react'
 import { Suspense, useState, useEffect } from 'react'
@@ -42,7 +43,7 @@ function SearchContent() {
         if (res.ok) {
           const data = await res.json()
           const items = (data.items || []).map((doc: any, idx: number) => ({
-            id: String(doc.id || idx),
+            id: doc.doc_id ? getDocumentRouteId(doc) : String(idx),
             type: doc.source_type === 'youtube' ? 'channel' : 'topic',
             title: doc.title || '(无标题)',
             snippet: doc.summary_excerpt || doc.podcast_title || '',

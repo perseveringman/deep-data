@@ -7,21 +7,13 @@ import { zhCN } from 'date-fns/locale'
 import { Youtube, Podcast, Clock, Eye, ThumbsUp, Play, LayoutGrid, List, FileText, Tag, ChevronDown, X, Loader2 } from 'lucide-react'
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import { contentItems as mockContentItems, type ContentItem } from '@/lib/mock-data'
+import { docToContentItem } from '@/lib/api'
 
 type FilterType = 'all' | 'youtube' | 'podcast'
 type ViewType = 'grid' | 'list'
 
 // Proxy through Next.js API route to avoid CORS / exposing key
 const PODADMIN_API = ''
-
-function formatDuration(seconds: number | null): string {
-  if (!seconds) return '0:00'
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  const s = seconds % 60
-  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-  return `${m}:${String(s).padStart(2, '0')}`
-}
 
 export default function ContentsPage() {
   const [typeFilter, setTypeFilter] = useState<FilterType>('all')
@@ -51,22 +43,7 @@ export default function ContentsPage() {
         const docs = results.flatMap(r => r?.items || [])
 
         if (docs.length > 0) {
-          const mapped: ContentItem[] = docs.map((doc: any) => ({
-            id: String(doc.id),
-            type: doc.source_type === 'youtube' ? 'youtube' : 'podcast',
-            title: doc.title || '(无标题)',
-            channelId: doc.source || doc.source_type,
-            channelName: doc.podcast_title || doc.source || doc.source_type,
-            publishedAt: doc.published_at ? doc.published_at.slice(0, 10) : '',
-            duration: formatDuration(doc.duration_seconds),
-            durationSeconds: doc.duration_seconds || 0,
-            coverUrl: doc.cover_url || undefined,
-            audioUrl: doc.audio_url || undefined,
-            tags: doc.tags || [],
-            summary: doc.summary_excerpt || '',
-            hasTranscript: doc.has_transcript,
-            contentFile: '',
-          }))
+          const mapped: ContentItem[] = docs.map((doc: any) => docToContentItem(doc))
           setContentItems(mapped)
         }
       } catch {

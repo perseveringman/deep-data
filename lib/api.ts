@@ -3,21 +3,35 @@
  *
  * Connects to the podadmin backend to fetch podcast / YouTube / multi-channel
  * document data. Set PODADMIN_API_URL and PODADMIN_API_KEY in your environment
- * (or .env.local) to point at the running instance.
+ * (or .env.local) to point at the running instance. For backward compatibility,
+ * read requests also fall back to DATAHUB_API_KEY when no dedicated read key
+ * is configured yet.
  */
 
-const API_BASE = process.env.PODADMIN_API_URL || 'http://localhost:8000'
-const API_KEY = process.env.PODADMIN_API_KEY || ''
+export const PODADMIN_API_BASE = process.env.PODADMIN_API_URL || 'http://localhost:8000'
+const READ_API_KEY = process.env.PODADMIN_API_KEY || process.env.DATAHUB_API_KEY || ''
+const UPLOAD_API_KEY = process.env.DATAHUB_API_KEY || ''
+
+export function getReadApiHeaders(headers: HeadersInit = {}): HeadersInit {
+  return {
+    'X-API-Key': READ_API_KEY,
+    'Accept': 'application/json',
+    ...headers,
+  }
+}
+
+export function getUploadApiHeaders(headers: HeadersInit = {}): HeadersInit {
+  return {
+    'X-DataHub-Api-Key': UPLOAD_API_KEY,
+    ...headers,
+  }
+}
 
 async function apiFetch<T = any>(path: string, init?: RequestInit): Promise<T> {
-  const url = `${API_BASE}/api/v1${path}`
+  const url = `${PODADMIN_API_BASE}/api/v1${path}`
   const res = await fetch(url, {
     ...init,
-    headers: {
-      'X-API-Key': API_KEY,
-      'Accept': 'application/json',
-      ...(init?.headers || {}),
-    },
+    headers: getReadApiHeaders(init?.headers || {}),
     next: { revalidate: 60 }, // ISR: revalidate every 60s
   })
   if (!res.ok) {
@@ -42,7 +56,11 @@ export interface DocumentItem {
   tags: string[]
   summary_excerpt: string | null
   cover_url: string | null
+  video_url: string | null
   audio_url: string | null
+  source_url_canonical: string | null
+  playback_url: string | null
+  playback_kind: 'video' | 'audio' | 'none' | null
   has_transcript: boolean
   file_path: string | null
   file_size: number | null
@@ -129,19 +147,17 @@ export async function listDocuments(params?: {
   return apiFetch<DocumentListResponse>(`/documents${qs ? `?${qs}` : ''}`)
 }
 
-/** Get a single document by id or doc_id. Pass include='body' for markdown body. */
-export async function getDocument(ref: string | number, includeBody = false): Promise<DocumentItem> {
+/** Get a single document by stable doc_id. Pass include='body' for markdown body. */
+export async function getDocument(ref: string, includeBody = false): Promise<DocumentItem> {
   const qs = includeBody ? '?include=body' : ''
   return apiFetch<DocumentItem>(`/documents/${ref}${qs}`)
 }
 
 /** Get raw markdown content of a document */
-export async function getDocumentRaw(ref: string | number): Promise<string> {
-  const url = `${API_BASE}/api/v1/documents/${ref}/raw`
+export async function getDocumentRaw(ref: string): Promise<string> {
+  const url = `${PODADMIN_API_BASE}/api/v1/documents/${ref}/raw`
   const res = await fetch(url, {
-    headers: {
-      'X-API-Key': API_KEY,
-    },
+    headers: getReadApiHeaders(),
     next: { revalidate: 60 },
   })
   if (!res.ok) {
@@ -209,10 +225,36 @@ function formatDuration(seconds: number | null): string {
 }
 
 /** Map a podadmin DocumentItem → deep-data ContentItem */
+export function getDocumentRouteId(doc: Pick<DocumentItem, 'doc_id' | 'id'>): string {
+  return doc.doc_id || String(doc.id)
+}
+
+function getPlayback(doc: DocumentItem): {
+  playbackUrl?: string
+  playbackKind: 'video' | 'audio' | 'none'
+} {
+  const playbackKind =
+    doc.playback_kind ||
+    (doc.source_type === 'youtube' ? 'video' : doc.audio_url ? 'audio' : 'none')
+
+  const playbackUrl =
+    doc.playback_url ||
+    (playbackKind === 'video'
+      ? doc.video_url || doc.source_url_canonical || undefined
+      : playbackKind === 'audio'
+        ? doc.audio_url || undefined
+        : undefined)
+
+  return { playbackUrl, playbackKind }
+}
+
+/** Map a podadmin DocumentItem → deep-data ContentItem */
 export function docToContentItem(doc: DocumentItem): ContentItem {
   const type: 'youtube' | 'podcast' = doc.source_type === 'youtube' ? 'youtube' : 'podcast'
+  const { playbackUrl, playbackKind } = getPlayback(doc)
+
   return {
-    id: String(doc.id),
+    id: getDocumentRouteId(doc),
     type,
     title: doc.title || '(无标题)',
     channelId: doc.source || doc.source_type,
@@ -221,7 +263,10 @@ export function docToContentItem(doc: DocumentItem): ContentItem {
     duration: formatDuration(doc.duration_seconds),
     durationSeconds: doc.duration_seconds || 0,
     coverUrl: doc.cover_url || undefined,
-    audioUrl: doc.audio_url || undefined,
+    playbackUrl,
+    playbackKind,
+    videoUrl: type === 'youtube' ? playbackUrl : undefined,
+    audioUrl: type === 'podcast' && playbackKind === 'audio' ? playbackUrl : undefined,
     tags: doc.tags || [],
     summary: doc.summary_excerpt || '',
     hasTranscript: doc.has_transcript,
