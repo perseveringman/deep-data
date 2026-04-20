@@ -20,6 +20,7 @@ export function PodcastReader({ content, markdownContent }: PodcastReaderProps) 
   const [volume, setVolume] = useState(1)
   const [isMuted, setIsMuted] = useState(false)
   const [playbackRate, setPlaybackRate] = useState(1)
+  const [activeTab, setActiveTab] = useState<'chapters' | 'transcript'>('chapters')
   
   const audioRef = useRef<HTMLAudioElement>(null)
   const transcriptRef = useRef<HTMLDivElement>(null)
@@ -27,7 +28,12 @@ export function PodcastReader({ content, markdownContent }: PodcastReaderProps) 
 
   // 解析结构化内容
   const parsedContent = parsePodcastContent(markdownContent)
-  const { metadata, description, shownotes, summary, takeaways, keywords, transcript } = parsedContent
+  const { metadata, description, shownotes, chapters, shownotesExtra, summary, takeaways, keywords, transcript } = parsedContent
+
+  // 如果没有章节，默认显示转写
+  useEffect(() => {
+    if (chapters.length === 0) setActiveTab('transcript')
+  }, [chapters.length])
 
   useEffect(() => {
     const audio = audioRef.current
@@ -120,14 +126,24 @@ export function PodcastReader({ content, markdownContent }: PodcastReaderProps) 
 
   const formatTime = (ms: number) => {
     const seconds = Math.floor(ms / 1000)
-    const mins = Math.floor(seconds / 60)
+    const hours = Math.floor(seconds / 3600)
+    const mins = Math.floor((seconds % 3600) / 60)
     const secs = seconds % 60
+    if (hours > 0) {
+      return `${hours}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+    }
     return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
   const activeIndex = transcript.findIndex((seg, i) => {
     const nextSeg = transcript[i + 1]
     return currentTime >= seg.startMs && (!nextSeg || currentTime < nextSeg.startMs)
+  })
+
+  const activeChapterIndex = chapters.findIndex((ch, i) => {
+    const nextCh = chapters[i + 1]
+    const currentSec = currentTime / 1000
+    return currentSec >= ch.seconds && (!nextCh || currentSec < nextCh.seconds)
   })
 
   const audioSrc = content.audioUrl?.includes('youtube.com') 
@@ -281,53 +297,106 @@ export function PodcastReader({ content, markdownContent }: PodcastReaderProps) 
           </div>
         </div>
 
-        {/* 转写时间轴 */}
+        {/* 章节 & 转写时间轴 */}
         <div className="flex-1 flex flex-col min-h-0">
-          <div className="mb-1.5 flex items-center justify-between border-b border-border pb-1 flex-shrink-0">
-            <h2 className="flex items-center gap-1.5 font-serif text-xs font-bold">
-              <List className="h-3.5 w-3.5" />
-              转写时间轴
-            </h2>
-            <span className="font-mono text-[10px] text-muted-foreground">
-              {formatTime(currentTime)} / {content.duration}
+          {/* Tab 切换 */}
+          <div className="mb-1.5 flex items-center gap-2 border-b border-border pb-1 flex-shrink-0">
+            {chapters.length > 0 && (
+              <button
+                onClick={() => setActiveTab('chapters')}
+                className={`flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                  activeTab === 'chapters'
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:bg-muted'
+                }`}
+              >
+                <List className="h-3 w-3" />
+                章节 ({chapters.length})
+              </button>
+            )}
+            <button
+              onClick={() => setActiveTab('transcript')}
+              className={`flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                activeTab === 'transcript'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:bg-muted'
+              }`}
+            >
+              <FileText className="h-3 w-3" />
+              转写 ({transcript.length})
+            </button>
+            <span className="ml-auto font-mono text-[9px] text-muted-foreground">
+              {formatTime(currentTime)}
             </span>
           </div>
+
           <div
             ref={transcriptRef}
             className="flex-1 overflow-y-auto"
           >
-            {transcript.length > 0 ? (
+            {activeTab === 'chapters' && chapters.length > 0 ? (
+              /* 章节列表 */
               <div className="space-y-0.5">
-                {transcript.map((segment, index) => {
-                  const isActive = index === activeIndex
+                {chapters.map((chapter, index) => {
+                  const isActive = index === activeChapterIndex
                   return (
                     <div
                       key={index}
                       ref={isActive ? activeSegmentRef : null}
-                      onClick={() => seekTo(segment.startMs)}
-                      className={`cursor-pointer rounded px-1.5 py-1 text-[11px] transition-colors ${
+                      onClick={() => seekTo(chapter.seconds * 1000)}
+                      className={`cursor-pointer rounded px-2 py-1 transition-colors ${
                         isActive
-                          ? 'bg-primary/10 text-foreground'
-                          : 'text-muted-foreground hover:bg-muted'
+                          ? 'bg-primary/10 border-l-2 border-primary'
+                          : 'hover:bg-muted'
                       }`}
                     >
-                      <span className={`mr-1.5 font-mono text-[9px] ${isActive ? 'text-primary' : 'text-muted-foreground/60'}`}>
-                        {formatTime(segment.startMs)}
-                      </span>
-                      {segment.speaker && (
-                        <span className={`mr-1 text-[10px] ${isActive ? 'text-primary font-medium' : 'text-muted-foreground/80'}`}>
-                          [{segment.speaker}]
+                      <div className="flex items-start gap-2">
+                        <span className={`font-mono text-[9px] ${isActive ? 'text-primary font-medium' : 'text-muted-foreground'}`}>
+                          {chapter.time}
                         </span>
-                      )}
-                      <span className="leading-snug">{segment.text}</span>
+                        <span className={`flex-1 text-[10px] leading-snug ${isActive ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
+                          {chapter.title}
+                        </span>
+                      </div>
                     </div>
                   )
                 })}
               </div>
             ) : (
-              <div className="flex h-32 items-center justify-center text-[11px] text-muted-foreground">
-                暂无转写内容
-              </div>
+              /* 转写时间轴 */
+              transcript.length > 0 ? (
+                <div className="space-y-0.5">
+                  {transcript.map((segment, index) => {
+                    const isActive = index === activeIndex
+                    return (
+                      <div
+                        key={index}
+                        ref={isActive ? activeSegmentRef : null}
+                        onClick={() => seekTo(segment.startMs)}
+                        className={`cursor-pointer rounded px-1.5 py-1 text-[11px] transition-colors ${
+                          isActive
+                            ? 'bg-primary/10 text-foreground'
+                            : 'text-muted-foreground hover:bg-muted'
+                        }`}
+                      >
+                        <span className={`mr-1.5 font-mono text-[9px] ${isActive ? 'text-primary' : 'text-muted-foreground/60'}`}>
+                          {formatTime(segment.startMs)}
+                        </span>
+                        {segment.speaker && (
+                          <span className={`mr-1 text-[10px] ${isActive ? 'text-primary font-medium' : 'text-muted-foreground/80'}`}>
+                            [{segment.speaker}]
+                          </span>
+                        )}
+                        <span className="leading-snug">{segment.text}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="flex h-32 items-center justify-center text-[11px] text-muted-foreground">
+                  暂无转写内容
+                </div>
+              )
             )}
           </div>
         </div>
@@ -387,15 +456,15 @@ export function PodcastReader({ content, markdownContent }: PodcastReaderProps) 
             </div>
           )}
 
-          {/* Shownotes 节目笔记 */}
-          {shownotes && (
+          {/* Shownotes 补充信息 */}
+          {shownotesExtra && (
             <div className="rounded border border-border bg-muted/30 p-2">
               <h2 className="mb-1 flex items-center gap-1 font-serif text-[10px] font-bold text-emerald-600">
                 <List className="h-3 w-3" />
                 节目笔记
               </h2>
               <p className="text-[10px] leading-relaxed text-muted-foreground whitespace-pre-line">
-                {shownotes}
+                {shownotesExtra}
               </p>
             </div>
           )}

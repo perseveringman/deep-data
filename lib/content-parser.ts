@@ -37,6 +37,8 @@ export interface PodcastContent {
   }
   description: string
   shownotes: string
+  chapters: { time: string; seconds: number; title: string }[]
+  shownotesExtra: string
   summary: string
   takeaways: string[]
   keywords: string[]
@@ -148,6 +150,33 @@ function parseTimestamps(text: string): { time: string; seconds: number; title: 
   }
 
   return timestamps
+}
+
+// 解析播客 Shownotes 中的章节时间戳（格式: "(MM:SS) Title" 或 "(H:MM:SS) Title"）
+function parseShownotesChapters(shownotes: string): {
+  chapters: { time: string; seconds: number; title: string }[]
+  extra: string
+} {
+  if (!shownotes) return { chapters: [], extra: '' }
+
+  const chapters: { time: string; seconds: number; title: string }[] = []
+  const extraLines: string[] = []
+  const lines = shownotes.split('\n')
+
+  for (const line of lines) {
+    const match = line.match(/^\(?(\d{1,2}:\d{2}(?::\d{2})?)\)?\s*(?:[–—-]\s*|\s+)(.+)$/)
+    if (match) {
+      chapters.push({
+        time: match[1],
+        seconds: parseTimeToSeconds(match[1]),
+        title: match[2].trim()
+      })
+    } else {
+      extraLines.push(line)
+    }
+  }
+
+  return { chapters, extra: extraLines.join('\n').trim() }
 }
 
 function parseCueTimeToMs(time: string): number | null {
@@ -313,6 +342,8 @@ export function parseYouTubeContent(rawContent: string): YouTubeContent {
 // 解析播客内容
 export function parsePodcastContent(rawContent: string): PodcastContent {
   const { frontmatter, body } = parseFrontmatter(rawContent)
+  const shownotes = parseSection(body, 'Shownotes')
+  const { chapters, extra: shownotesExtra } = parseShownotesChapters(shownotes)
 
   return {
     metadata: {
@@ -328,7 +359,9 @@ export function parsePodcastContent(rawContent: string): PodcastContent {
       speakers: frontmatter.speakers || []
     },
     description: parseSection(body, 'Description'),
-    shownotes: parseSection(body, 'Shownotes'),
+    shownotes,
+    chapters,
+    shownotesExtra,
     summary: parseSection(body, 'Summary'),
     takeaways: parseTakeaways(body),
     keywords: parseKeywords(body),
