@@ -36,6 +36,7 @@ export interface PodcastContent {
     speakers: string[]
   }
   description: string
+  shownotes: string
   summary: string
   takeaways: string[]
   keywords: string[]
@@ -327,6 +328,7 @@ export function parsePodcastContent(rawContent: string): PodcastContent {
       speakers: frontmatter.speakers || []
     },
     description: parseSection(body, 'Description'),
+    shownotes: parseSection(body, 'Shownotes'),
     summary: parseSection(body, 'Summary'),
     takeaways: parseTakeaways(body),
     keywords: parseKeywords(body),

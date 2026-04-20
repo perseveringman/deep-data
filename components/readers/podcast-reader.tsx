@@ -27,7 +27,7 @@ export function PodcastReader({ content, markdownContent }: PodcastReaderProps) 
 
   // 解析结构化内容
   const parsedContent = parsePodcastContent(markdownContent)
-  const { metadata, description, summary, takeaways, keywords, transcript } = parsedContent
+  const { metadata, description, shownotes, summary, takeaways, keywords, transcript } = parsedContent
 
   useEffect(() => {
     const audio = audioRef.current
@@ -384,6 +384,19 @@ export function PodcastReader({ content, markdownContent }: PodcastReaderProps) 
                   </span>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Shownotes 节目笔记 */}
+          {shownotes && (
+            <div className="rounded border border-border bg-muted/30 p-2">
+              <h2 className="mb-1 flex items-center gap-1 font-serif text-[10px] font-bold text-emerald-600">
+                <List className="h-3 w-3" />
+                节目笔记
+              </h2>
+              <p className="text-[10px] leading-relaxed text-muted-foreground whitespace-pre-line">
+                {shownotes}
+              </p>
             </div>
           )}
 
