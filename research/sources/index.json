@@ -1,0 +1,74 @@
+[
+  {
+    "id": 1,
+    "url": "https://raw.githubusercontent.com/remarkjs/react-markdown/main/readme.md",
+    "title": "react-markdown README",
+    "local_path": "research/sources/source-001.md",
+    "fetched_at": "2026-04-22T15:35:00Z",
+    "size_bytes": 26662
+  },
+  {
+    "id": 2,
+    "url": "https://raw.githubusercontent.com/remarkjs/remark-gfm/main/readme.md",
+    "title": "remark-gfm README",
+    "local_path": "research/sources/source-002.md",
+    "fetched_at": "2026-04-22T15:35:00Z",
+    "size_bytes": 15694
+  },
+  {
+    "id": 3,
+    "url": "https://raw.githubusercontent.com/rehypejs/rehype-sanitize/main/readme.md",
+    "title": "rehype-sanitize README",
+    "local_path": "research/sources/source-003.md",
+    "fetched_at": "2026-04-22T15:35:01Z",
+    "size_bytes": 16640
+  },
+  {
+    "id": 4,
+    "url": "https://raw.githubusercontent.com/futurepress/epub.js/master/README.md",
+    "title": "epub.js README",
+    "local_path": "research/sources/source-004.md",
+    "fetched_at": "2026-04-22T15:35:02Z",
+    "size_bytes": 6852
+  },
+  {
+    "id": 5,
+    "url": "https://raw.githubusercontent.com/gerhardsletten/react-reader/master/README.md",
+    "title": "react-reader README",
+    "local_path": "research/sources/source-005.md",
+    "fetched_at": "2026-04-22T15:35:04Z",
+    "size_bytes": 7783
+  },
+  {
+    "id": 6,
+    "url": "https://mozilla.github.io/pdf.js/getting_started/",
+    "title": "PDF.js - Getting Started",
+    "local_path": "research/sources/source-006.md",
+    "fetched_at": "2026-04-22T15:35:04Z",
+    "size_bytes": 4501
+  },
+  {
+    "id": 7,
+    "url": "https://raw.githubusercontent.com/wojtekmaj/react-pdf/main/packages/react-pdf/README.md",
+    "title": "react-pdf package README",
+    "local_path": "research/sources/source-007.md",
+    "fetched_at": "2026-04-22T15:38:55Z",
+    "size_bytes": 71686
+  },
+  {
+    "id": 8,
+    "url": "https://raw.githubusercontent.com/react-pdf-viewer/react-pdf-viewer/master/README.md",
+    "title": "react-pdf-viewer README",
+    "local_path": "research/sources/source-008.md",
+    "fetched_at": "2026-04-22T15:37:17Z",
+    "size_bytes": 2130
+  },
+  {
+    "id": 9,
+    "url": "https://raw.githubusercontent.com/bvaughn/react-window/master/README.md",
+    "title": "react-window README",
+    "local_path": "research/sources/source-009.md",
+    "fetched_at": "2026-04-22T15:37:18Z",
+    "size_bytes": 19322
+  }
+]
