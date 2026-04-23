@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
@@ -23,6 +24,10 @@ async function importMarkdownParser() {
 
 async function importRuntime() {
   return import(moduleUrl('components/reader-platform/runtime.ts'))
+}
+
+async function importDomHighlights() {
+  return import(moduleUrl('components/reader-platform/dom-highlights.ts'))
 }
 
 test('resolveReaderPreferences merges layered values', async () => {
@@ -204,4 +209,35 @@ test('buildReaderAnalysisContext merges live reader state into canonical context
   assert.equal(context.visibleContent.length, 1)
   assert.equal(context.annotations?.length, 1)
   assert.equal(context.capabilities.aiContext, true)
+})
+
+test('findHighlightQuoteMatch tolerates collapsed whitespace and repeated quotes', async () => {
+  const { findHighlightQuoteMatch } = await importDomHighlights()
+
+  const first = findHighlightQuoteMatch(
+    'Alpha\nBeta   Gamma. Alpha Beta Gamma.',
+    'Alpha Beta Gamma',
+  )
+
+  assert.deepEqual(first, { start: 0, end: 18 })
+
+  const second = findHighlightQuoteMatch(
+    'Alpha\nBeta   Gamma. Alpha Beta Gamma.',
+    'Alpha Beta Gamma',
+    [first!],
+  )
+
+  assert.deepEqual(second, { start: 20, end: 36 })
+})
+
+test('renderReaderQuoteHighlights plans matches from one baseline text snapshot', async () => {
+  const source = await readFile(
+    path.join(process.cwd(), 'components/reader-platform/dom-highlights.ts'),
+    'utf8',
+  )
+
+  assert.match(source, /const segments = collectHighlightTextSegments\(root\)/)
+  assert.match(source, /const contentText = segments\.map\(\(segment\) => segment\.text\)\.join\(''\)/)
+  assert.match(source, /const plannedHighlights = annotations/)
+  assert.match(source, /plannedHighlights\.forEach\(\(\{ annotation, match \}\) =>/)
 })

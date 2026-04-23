@@ -33,6 +33,8 @@ interface SharedReaderProps {
   contentHeightClassName?: string
   sidebarStickyTopClassName?: string
   rootRef?: RefObject<HTMLDivElement | null>
+  contentSurfaceRef?: RefObject<HTMLDivElement | null>
+  overlay?: ReactNode
   sidebarExtra?: ReactNode
 }
 
@@ -133,6 +135,8 @@ export function SharedReader({
   contentHeightClassName = 'h-[calc(100vh-80px)]',
   sidebarStickyTopClassName = 'top-12',
   rootRef,
+  contentSurfaceRef,
+  overlay,
   sidebarExtra,
 }: SharedReaderProps) {
   const [activeTab, setActiveTab] = useState<ReaderTab>(chapters.length > 0 ? 'chapters' : 'transcript')
@@ -169,12 +173,14 @@ export function SharedReader({
   )
 
   return (
-    <div ref={rootRef} className={cn('grid grid-cols-12 gap-3', className)}>
+    <div ref={rootRef} className={cn('relative grid grid-cols-12 gap-3', className)}>
+      {overlay}
       <div className={cn('col-span-12 flex flex-col gap-2 lg:col-span-8', contentHeightClassName)}>
-        {hero}
+        <div ref={contentSurfaceRef} className="flex min-h-0 flex-1 flex-col gap-2">
+          {hero}
 
-        <div className="flex min-h-0 flex-1 flex-col">
-          <div className="mb-1.5 flex flex-shrink-0 items-center gap-2 border-b border-border pb-1">
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div className="mb-1.5 flex flex-shrink-0 items-center gap-2 border-b border-border pb-1">
             {chapters.length > 0 ? (
               <button
                 onClick={() => setActiveTab('chapters')}
@@ -206,69 +212,70 @@ export function SharedReader({
             <span className="ml-auto font-mono text-[9px] text-muted-foreground">
               {formatTime(currentTime)}
             </span>
-          </div>
+            </div>
 
-          <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
-            {activeTab === 'chapters' && chapters.length > 0 ? (
-              <div className="space-y-0.5">
-                {chapters.map((chapter, index) => {
-                  const isActive = index === activeChapterIndex
+            <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
+              {activeTab === 'chapters' && chapters.length > 0 ? (
+                <div className="space-y-0.5">
+                  {chapters.map((chapter, index) => {
+                    const isActive = index === activeChapterIndex
 
-                  return (
-                    <div
-                      key={chapter.id ?? `${chapter.seconds}-${chapter.title}`}
-                      ref={isActive ? activeItemRef : null}
-                      onClick={() => onSeek(chapter.seconds * 1000)}
-                      className={cn(
-                        'cursor-pointer rounded px-2 py-1 transition-colors',
-                        isActive ? 'border-l-2 border-primary bg-primary/10' : 'hover:bg-muted',
-                      )}
-                    >
-                      <div className="flex items-start gap-2">
-                        <span className={cn('font-mono text-[9px]', isActive ? 'font-medium text-primary' : 'text-muted-foreground')}>
-                          {chapter.time}
-                        </span>
-                        <span className={cn('flex-1 text-[10px] leading-snug', isActive ? 'font-medium text-foreground' : 'text-muted-foreground')}>
-                          {chapter.title}
-                        </span>
+                    return (
+                      <div
+                        key={chapter.id ?? `${chapter.seconds}-${chapter.title}`}
+                        ref={isActive ? activeItemRef : null}
+                        onClick={() => onSeek(chapter.seconds * 1000)}
+                        className={cn(
+                          'cursor-pointer rounded px-2 py-1 transition-colors',
+                          isActive ? 'border-l-2 border-primary bg-primary/10' : 'hover:bg-muted',
+                        )}
+                      >
+                        <div className="flex items-start gap-2">
+                          <span className={cn('font-mono text-[9px]', isActive ? 'font-medium text-primary' : 'text-muted-foreground')}>
+                            {chapter.time}
+                          </span>
+                          <span className={cn('flex-1 text-[10px] leading-snug', isActive ? 'font-medium text-foreground' : 'text-muted-foreground')}>
+                            {chapter.title}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  )
-                })}
-              </div>
-            ) : transcript.length > 0 ? (
-              <div className="space-y-0.5">
-                {transcript.map((segment, index) => {
-                  const isActive = index === activeTranscriptIndex
+                    )
+                  })}
+                </div>
+              ) : transcript.length > 0 ? (
+                <div className="space-y-0.5">
+                  {transcript.map((segment, index) => {
+                    const isActive = index === activeTranscriptIndex
 
-                  return (
-                    <div
-                      key={segment.id ?? `${segment.startMs}-${segment.text.slice(0, 24)}`}
-                      ref={isActive ? activeItemRef : null}
-                      onClick={() => onSeek(segment.startMs)}
-                      className={cn(
-                        'cursor-pointer rounded px-1.5 py-1 text-[11px] transition-colors',
-                        isActive ? 'bg-primary/10 text-foreground' : 'text-muted-foreground hover:bg-muted',
-                      )}
-                    >
-                      <span className={cn('mr-1.5 font-mono text-[9px]', isActive ? 'text-primary' : 'text-muted-foreground/60')}>
-                        {formatTime(segment.startMs)}
-                      </span>
-                      {segment.speaker ? (
-                        <span className={cn('mr-1 text-[10px]', isActive ? 'font-medium text-primary' : 'text-muted-foreground/80')}>
-                          [{segment.speaker}]
+                    return (
+                      <div
+                        key={segment.id ?? `${segment.startMs}-${segment.text.slice(0, 24)}`}
+                        ref={isActive ? activeItemRef : null}
+                        onClick={() => onSeek(segment.startMs)}
+                        className={cn(
+                          'cursor-pointer rounded px-1.5 py-1 text-[11px] transition-colors',
+                          isActive ? 'bg-primary/10 text-foreground' : 'text-muted-foreground hover:bg-muted',
+                        )}
+                      >
+                        <span className={cn('mr-1.5 font-mono text-[9px]', isActive ? 'text-primary' : 'text-muted-foreground/60')}>
+                          {formatTime(segment.startMs)}
                         </span>
-                      ) : null}
-                      <span className="leading-snug">{segment.text}</span>
-                    </div>
-                  )
-                })}
-              </div>
-            ) : (
-              <div className="flex h-32 items-center justify-center text-[11px] text-muted-foreground">
-                {activeTab === 'chapters' ? messages.noChapters : messages.noTranscript}
-              </div>
-            )}
+                        {segment.speaker ? (
+                          <span className={cn('mr-1 text-[10px]', isActive ? 'font-medium text-primary' : 'text-muted-foreground/80')}>
+                            [{segment.speaker}]
+                          </span>
+                        ) : null}
+                        <span className="leading-snug">{segment.text}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="flex h-32 items-center justify-center text-[11px] text-muted-foreground">
+                  {activeTab === 'chapters' ? messages.noChapters : messages.noTranscript}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>

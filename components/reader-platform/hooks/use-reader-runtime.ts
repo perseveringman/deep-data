@@ -146,12 +146,26 @@ export function useReaderRuntime({
   )
 
   const createAnnotationFromSelection = useCallback(
-    (color: ReaderHighlightColor = 'yellow') => {
+    (
+      options:
+        | ReaderHighlightColor
+        | {
+            color?: ReaderHighlightColor
+            bodyMarkdown?: string
+            anchors?: Record<string, unknown>
+            tags?: string[]
+          } = 'yellow',
+    ) => {
       if (!snapshot?.selection) {
         throw new Error('Creating an annotation requires a current text selection')
       }
 
-      return createAnnotation(snapshot.selection.range, { color })
+      const normalizedOptions =
+        typeof options === 'string'
+          ? { color: options }
+          : options
+
+      return createAnnotation(snapshot.selection.range, normalizedOptions)
     },
     [createAnnotation, snapshot?.selection],
   )
@@ -165,6 +179,28 @@ export function useReaderRuntime({
           const nextAnnotation: ReaderAnnotation = {
             ...annotation,
             bodyMarkdown,
+            updatedAt: new Date().toISOString(),
+          }
+
+          emitAnnotationChange('update', nextAnnotation)
+          return nextAnnotation
+        }),
+      )
+    },
+    [emitAnnotationChange],
+  )
+
+  const updateAnnotationColor = useCallback(
+    (annotationId: string, color: ReaderHighlightColor) => {
+      setAnnotations((current) =>
+        current.map((annotation) => {
+          if (annotation.id !== annotationId || annotation.color === color) {
+            return annotation
+          }
+
+          const nextAnnotation: ReaderAnnotation = {
+            ...annotation,
+            color,
             updatedAt: new Date().toISOString(),
           }
 
@@ -233,6 +269,7 @@ export function useReaderRuntime({
     createAnnotation,
     createAnnotationFromSelection,
     updateAnnotationBody,
+    updateAnnotationColor,
     deleteAnnotation,
     analysisContext,
     translation: {

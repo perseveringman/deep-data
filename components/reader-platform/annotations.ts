@@ -2,6 +2,14 @@ import type { ReaderDocumentIdentity, ReaderRange, ReaderType } from './core'
 
 export type ReaderHighlightColor = 'yellow' | 'green' | 'blue' | 'pink' | 'purple'
 
+export const readerHighlightColors: ReaderHighlightColor[] = [
+  'yellow',
+  'green',
+  'blue',
+  'pink',
+  'purple',
+]
+
 export interface ReaderAnnotation {
   id: string
   documentId: string

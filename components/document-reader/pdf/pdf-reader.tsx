@@ -3,7 +3,7 @@
 import 'react-pdf/dist/Page/AnnotationLayer.css'
 import 'react-pdf/dist/Page/TextLayer.css'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Document, Page, pdfjs } from 'react-pdf'
 
 import { DocumentShell } from '@/components/document-reader/shared'
@@ -23,6 +23,7 @@ import {
   defaultReaderPreferenceCapabilities,
   defaultReaderPreferences,
   getScopedSelection,
+  ReaderSelectionOverlayHost,
   ReaderWorkspacePanel,
   renderReaderQuoteHighlights,
   resolveReaderPreferences,
@@ -86,6 +87,7 @@ export function PdfReader({
 }: PdfReaderProps) {
   const contentRef = useRef<HTMLDivElement>(null)
   const loadTaskIdRef = useRef(0)
+  const workspacePanelId = useId().replace(/:/g, '')
   const [pageNumber, setPageNumber] = useState(initialPage)
   const [numPages, setNumPages] = useState(0)
   const [outline, setOutline] = useState<ReaderTocItem[]>([])
@@ -345,9 +347,26 @@ export function PdfReader({
           <span>{identity.language ? `语言: ${identity.language}` : null}</span>
         </div>
       }
+      contentOverlay={
+        <ReaderSelectionOverlayHost
+          surfaceRef={contentRef}
+          selection={selection}
+          capabilities={capabilities}
+          analysisContext={runtime.analysisContext}
+          selectionMenuEnabled={resolvedPreferences.behavior.selectionMenu !== false}
+          reduceMotion={resolvedPreferences.behavior.reduceMotion === true}
+          canTranslate={runtime.translation.canTranslate}
+          requestSelectionTranslation={() => runtime.translation.requestTranslation('selection')}
+          createHighlight={(color = 'yellow') => runtime.createAnnotationFromSelection(color)}
+          updateNoteBody={runtime.updateAnnotationBody}
+          updateHighlightColor={runtime.updateAnnotationColor}
+          workspacePanelIdPrefix={workspacePanelId}
+        />
+      }
       content={documentContent}
       rightSidebarExtra={
         <ReaderWorkspacePanel
+          idPrefix={workspacePanelId}
           capabilities={capabilities}
           selection={selection}
           activeUnit={activeUnit}

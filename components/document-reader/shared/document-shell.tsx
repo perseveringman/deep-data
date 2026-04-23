@@ -50,6 +50,7 @@ export interface DocumentShellProps {
   toolbarStart?: ReactNode
   toolbarEnd?: ReactNode
   content: ReactNode
+  contentOverlay?: ReactNode
   footerInfo?: ReactNode
   className?: string
 }
@@ -124,6 +125,7 @@ export function DocumentShell({
   toolbarStart,
   toolbarEnd,
   content,
+  contentOverlay,
   footerInfo,
   className,
 }: DocumentShellProps) {
@@ -233,11 +235,12 @@ export function DocumentShell({
 
         <div
           className={cn(
-            'rounded-lg border bg-card',
+            'relative rounded-lg border bg-card',
             mergedPreferences.theme.mode === 'sepia' && 'bg-amber-50/70 dark:bg-amber-950/20',
           )}
         >
           {content}
+          {contentOverlay}
         </div>
 
         {footerInfo ? <footer className="text-sm text-muted-foreground">{footerInfo}</footer> : null}

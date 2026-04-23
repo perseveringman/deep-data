@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
@@ -24,6 +24,7 @@ import {
   defaultReaderPreferenceCapabilities,
   defaultReaderPreferences,
   getScopedSelection,
+  ReaderSelectionOverlayHost,
   ReaderWorkspacePanel,
   renderReaderQuoteHighlights,
   resolveReaderPreferences,
@@ -104,6 +105,7 @@ export function MarkdownReader({
   onAnalysisContextChange,
 }: MarkdownReaderProps) {
   const contentRef = useRef<HTMLDivElement>(null)
+  const workspacePanelId = useId().replace(/:/g, '')
 
   const [markdown, setMarkdown] = useState('markdown' in source ? source.markdown : '')
   const [searchQuery, setSearchQuery] = useState('')
@@ -328,6 +330,22 @@ export function MarkdownReader({
       onSearchQueryChange={setSearchQuery}
       searchResults={searchResults}
       onSearchResultSelect={jumpToAnchor}
+      contentOverlay={
+        <ReaderSelectionOverlayHost
+          surfaceRef={contentRef}
+          selection={selection}
+          capabilities={capabilities}
+          analysisContext={runtime.analysisContext}
+          selectionMenuEnabled={resolvedPreferences.behavior.selectionMenu !== false}
+          reduceMotion={resolvedPreferences.behavior.reduceMotion === true}
+          canTranslate={runtime.translation.canTranslate}
+          requestSelectionTranslation={() => runtime.translation.requestTranslation('selection')}
+          createHighlight={(color = 'yellow') => runtime.createAnnotationFromSelection(color)}
+          updateNoteBody={runtime.updateAnnotationBody}
+          updateHighlightColor={runtime.updateAnnotationColor}
+          workspacePanelIdPrefix={workspacePanelId}
+        />
+      }
       content={
         <div
           ref={contentRef}
@@ -365,6 +383,7 @@ export function MarkdownReader({
       }
       rightSidebarExtra={
         <ReaderWorkspacePanel
+          idPrefix={workspacePanelId}
           capabilities={capabilities}
           selection={selection}
           activeUnit={activeUnit}

@@ -1,2 +1,6 @@
 export { AnnotationSidebar } from './annotation-sidebar'
+export { ReaderSelectionOverlayHost } from './reader-selection-overlay-host'
 export { ReaderWorkspacePanel } from './reader-workspace-panel'
+export { getReaderWorkspaceRootId, getReaderWorkspaceSectionId } from './reader-workspace-ids'
+export { SelectionActionBar } from './selection-action-bar'
+export { SelectionPreviewCard } from './selection-preview-card'

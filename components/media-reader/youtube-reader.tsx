@@ -9,6 +9,7 @@ import {
   defaultReaderCapabilities,
   defaultReaderPreferences,
   getScopedSelection,
+  ReaderSelectionOverlayHost,
   type ReaderSelection,
   ReaderWorkspacePanel,
   renderReaderQuoteHighlights,
@@ -80,7 +81,9 @@ export function YouTubeReader({
   const mergedMessages = useMemo(() => resolveReaderMessages(messages), [messages])
   const playerRef = useRef<YT.Player | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
+  const contentSurfaceRef = useRef<HTMLDivElement>(null)
   const playerId = useId().replace(/:/g, '')
+  const workspacePanelId = useId().replace(/:/g, '')
 
   const [currentTime, setCurrentTime] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
@@ -289,7 +292,7 @@ export function YouTubeReader({
     const handleSelection = () => {
       setSelection(
         getScopedSelection({
-          root: rootRef.current,
+          root: contentSurfaceRef.current,
           buildRange: (text) => ({
             start:
               activeUnit?.locator ?? {
@@ -338,7 +341,7 @@ export function YouTubeReader({
   ])
 
   useEffect(() => {
-    renderReaderQuoteHighlights(rootRef.current, runtime.annotations)
+    renderReaderQuoteHighlights(contentSurfaceRef.current, runtime.annotations)
   }, [currentTime, runtime.annotations, sidebarSections, transcript])
 
   const hero = (
@@ -425,6 +428,7 @@ export function YouTubeReader({
   return (
     <SharedReader
       rootRef={rootRef}
+      contentSurfaceRef={contentSurfaceRef}
       hero={hero}
       chapters={chapters}
       transcript={transcript}
@@ -436,8 +440,25 @@ export function YouTubeReader({
       className={className}
       contentHeightClassName={contentHeightClassName}
       sidebarStickyTopClassName={sidebarStickyTopClassName}
+      overlay={
+        <ReaderSelectionOverlayHost
+          surfaceRef={contentSurfaceRef}
+          selection={selection}
+          capabilities={capabilities}
+          analysisContext={runtime.analysisContext}
+          selectionMenuEnabled={resolvedPreferences.behavior.selectionMenu !== false}
+          reduceMotion={resolvedPreferences.behavior.reduceMotion === true}
+          canTranslate={runtime.translation.canTranslate}
+          requestSelectionTranslation={() => runtime.translation.requestTranslation('selection')}
+          createHighlight={(color = 'yellow') => runtime.createAnnotationFromSelection(color)}
+          updateNoteBody={runtime.updateAnnotationBody}
+          updateHighlightColor={runtime.updateAnnotationColor}
+          workspacePanelIdPrefix={workspacePanelId}
+        />
+      }
       sidebarExtra={
         <ReaderWorkspacePanel
+          idPrefix={workspacePanelId}
           capabilities={capabilities}
           selection={selection}
           activeUnit={activeUnit}

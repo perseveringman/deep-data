@@ -1,12 +1,13 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { format } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
 import {
   defaultReaderCapabilities,
   defaultReaderPreferences,
   getScopedSelection,
+  ReaderSelectionOverlayHost,
   ReaderSelection,
   ReaderWorkspacePanel,
   renderReaderQuoteHighlights,
@@ -59,6 +60,8 @@ export function PodcastReader({
 }: PodcastReaderProps) {
   const audioRef = useRef<HTMLAudioElement>(null)
   const rootRef = useRef<HTMLDivElement>(null)
+  const contentSurfaceRef = useRef<HTMLDivElement>(null)
+  const workspacePanelId = useId().replace(/:/g, '')
   const mergedMessages = useMemo(() => resolveReaderMessages(messages), [messages])
 
   const [isPlaying, setIsPlaying] = useState(false)
@@ -272,7 +275,7 @@ export function PodcastReader({
     const handleSelection = () => {
       setSelection(
         getScopedSelection({
-          root: rootRef.current,
+          root: contentSurfaceRef.current,
           buildRange: (text) => ({
             start:
               activeUnit?.locator ?? {
@@ -321,7 +324,7 @@ export function PodcastReader({
   ])
 
   useEffect(() => {
-    renderReaderQuoteHighlights(rootRef.current, runtime.annotations)
+    renderReaderQuoteHighlights(contentSurfaceRef.current, runtime.annotations)
   }, [runtime.annotations, sidebarSections, transcript, currentTime])
 
   const togglePlay = () => {
@@ -524,6 +527,7 @@ export function PodcastReader({
   return (
     <SharedReader
       rootRef={rootRef}
+      contentSurfaceRef={contentSurfaceRef}
       hero={hero}
       chapters={chapters}
       transcript={transcript}
@@ -535,8 +539,25 @@ export function PodcastReader({
       className={className}
       contentHeightClassName={contentHeightClassName}
       sidebarStickyTopClassName={sidebarStickyTopClassName}
+      overlay={
+        <ReaderSelectionOverlayHost
+          surfaceRef={contentSurfaceRef}
+          selection={selection}
+          capabilities={capabilities}
+          analysisContext={runtime.analysisContext}
+          selectionMenuEnabled={resolvedPreferences.behavior.selectionMenu !== false}
+          reduceMotion={resolvedPreferences.behavior.reduceMotion === true}
+          canTranslate={runtime.translation.canTranslate}
+          requestSelectionTranslation={() => runtime.translation.requestTranslation('selection')}
+          createHighlight={(color = 'yellow') => runtime.createAnnotationFromSelection(color)}
+          updateNoteBody={runtime.updateAnnotationBody}
+          updateHighlightColor={runtime.updateAnnotationColor}
+          workspacePanelIdPrefix={workspacePanelId}
+        />
+      }
       sidebarExtra={
         <ReaderWorkspacePanel
+          idPrefix={workspacePanelId}
           capabilities={capabilities}
           selection={selection}
           activeUnit={activeUnit}

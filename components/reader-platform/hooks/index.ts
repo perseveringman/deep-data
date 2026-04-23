@@ -1,4 +1,5 @@
 export { useReaderPreferences } from './use-reader-preferences'
 export { useReaderRuntime } from './use-reader-runtime'
 export { useReaderSession } from './use-reader-session'
+export { useSelectionOverlayState } from './use-selection-overlay-state'
 export { useReaderTranslation } from './use-reader-translation'

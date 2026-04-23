@@ -8,7 +8,7 @@ The interaction model is:
 
 1. User selects text.
 2. A compact floating action bar appears near the selection.
-3. The user can translate, run AI analysis, create a highlight, or add a short note without moving focus away from the reading surface.
+3. The user can translate, run AI analysis, or enter the shared highlight-and-note flow without moving focus away from the reading surface.
 4. Rich results and long-form editing continue in the existing `ReaderWorkspacePanel`.
 
 This keeps the reading flow fast while avoiding a second full workspace inside the overlay.
@@ -42,12 +42,11 @@ Today the selection follow-up flow requires the user to move attention from the 
 
 ### Base Flow
 
-After a non-empty selection stabilizes, show a compact floating action bar close to the selection anchor. The action bar exposes four primary actions:
+After a non-empty selection stabilizes, show a compact floating action bar close to the selection anchor. The action bar exposes three primary actions:
 
 - Translate
 - AI
-- Highlight
-- Note
+- Highlight/Note
 
 This first state should be intentionally small and low-distraction. It behaves like a context action strip rather than a modal.
 
@@ -57,8 +56,7 @@ Selecting one of the actions expands the floating action bar into a small previe
 
 - **Translate**: show loading, then a short translation preview and an entry point to open the full result in the right sidebar.
 - **AI**: show loading, then a short analysis summary or first response chunk and an entry point to open the full result in the right sidebar.
-- **Highlight**: allow immediate creation with a default color, then optionally expose quick color switching.
-- **Note**: expand into a compact note composer with the current quote, a short text field, and save.
+- **Highlight/Note**: immediately create the highlight, expand into a compact note composer with the current quote, keep quick color switching available while drafting, and leave long-form Markdown editing to the sidebar.
 
 The overlay is optimized for capture and preview, not for long workflows. Detailed review and editing stay in the sidebar.
 
@@ -261,22 +259,14 @@ This separation prevents the overlay from destabilizing the broader reader runti
 4. Overlay shows a compact summary preview.
 5. User can open the full result in the sidebar.
 
-### Quick Highlight
+### Quick Highlight / Note
 
 1. User selects text.
-2. User clicks `Highlight`.
-3. Default highlight is created immediately.
-4. Overlay may briefly expose quick color choices.
-5. Sidebar selects the newly created annotation.
-
-### Quick Note
-
-1. User selects text.
-2. User clicks `Note`.
-3. Overlay expands into a compact note card.
-4. User writes a short note and saves.
-5. A highlight-backed annotation is created with `bodyMarkdown`.
-6. Sidebar focuses the created annotation for further editing if needed.
+2. User clicks `Highlight/Note`.
+3. A default highlight is created immediately and the overlay stays open.
+4. User can switch highlight color in place while drafting a short note.
+5. Saving updates the same highlight-backed annotation with `bodyMarkdown`.
+6. Sidebar focuses the created annotation for further Markdown refinement if needed.
 
 ## Error Handling
 
@@ -379,7 +369,135 @@ Do not add tabs, history, or long-form editing into the overlay in the first ver
 ## Open Questions
 
 - whether AI preview should show a summary sentence, bullet points, or the first response chunk
-- whether highlight should default to one color or remember the last-used color
-- whether the note action should create a highlight automatically or allow note-only annotations
+- whether highlight should default to one color or remember the last-used color beyond the current session
 
 These do not block the initial architecture and can be resolved during implementation planning.
+
+## Implementation Report
+
+### Status
+
+The first-pass shared selection overlay has been implemented across all five readers.
+
+### What Landed
+
+#### Shared Overlay Layer
+
+Added the following shared reader-platform pieces:
+
+- `ReaderSelectionOverlayHost`
+- `SelectionActionBar`
+- `SelectionPreviewCard`
+- `useSelectionOverlayState()`
+- shared overlay placement and preview helpers
+- shared workspace section id helpers for sidebar handoff
+
+The overlay now owns the local ephemeral interaction state described in this design:
+
+- mode transitions: `closed | actions | translate | ai | highlight | note`
+- sticky-open dismissal timing
+- temporary translation preview state
+- note draft state
+- inline action error state
+
+#### Selection Positioning
+
+`ReaderSelection` now carries an optional `anchorRect` so the overlay can position against a captured viewport rect instead of depending entirely on live browser selection state.
+
+That is used in:
+
+- Markdown, PDF, YouTube, and Podcast readers through the shared `getScopedSelection()` path
+- EPUB reader through a translated iframe selection rect captured from the rendition contents window
+
+If a reliable rect is unavailable, placement falls back to the active reader surface anchor and stays clamped inside the reading surface.
+
+#### Reader Integration
+
+The same overlay host is now mounted in both shared reader shells:
+
+- document readers mount through `DocumentShell.contentOverlay`
+- media readers mount through `SharedReader.overlay`
+
+This keeps the overlay outside the text-rendering internals while still positioning relative to the selection-producing surface.
+
+#### Action Wiring
+
+Implemented the four first-pass actions from the recommended initial scope:
+
+- **Translate**: calls `runtime.translation.requestTranslation('selection')`, shows a compact preview in place, and hands off to the translation area in the right sidebar
+- **AI**: uses the canonical `analysisContext` to produce a compact preview/handoff card and jumps to the AI section in the right sidebar
+- **Highlight/Note**: the overlay now treats highlight and note as one flow: opening note mode immediately creates a default yellow highlight, opens the short-note composer, allows in-place color switching while drafting, and hands off to the annotation area for deeper Markdown editing in the sidebar
+
+`useReaderRuntime()` was extended so selection-based annotation creation can reuse the existing `createAnnotation()` path while optionally supplying `bodyMarkdown`, tags, or anchors.
+
+#### Sidebar Handoff
+
+`ReaderWorkspacePanel` now exposes stable section ids for:
+
+- translation
+- AI context
+- annotations
+
+The overlay scrolls/focuses these sections so the right sidebar remains the durable workspace while the overlay stays lightweight.
+
+#### Keyboard and Dismissal Behavior
+
+Implemented:
+
+- `Esc` to dismiss the overlay
+- `Alt+T` to trigger selection translation when available
+- `Alt+A` to open the AI preview when available
+
+The overlay also keeps a short sticky-open window so pointer travel from the selection to the floating card does not collapse the UI immediately.
+
+### Scope Decisions Taken During Implementation
+
+- AI preview uses the existing canonical `analysisContext` rather than a new remote analysis executor because the repository does not yet expose a separate shared AI request API.
+- Default quick highlight color is `yellow`.
+- Quick note and highlight are unified into one action. Entering note mode creates the highlight immediately; the overlay then supports color switching plus short-note capture, while the right sidebar remains the place for long-form Markdown writing.
+- The first implementation keeps long-form Markdown editing out of the floating card; the overlay only handles quick color switching plus short-note capture.
+
+### Tests and Verification
+
+Added targeted structural coverage for the overlay layer in `tests/reader-selection-overlay.test.ts`, including:
+
+- overlay placement behavior
+- AI preview summarization
+- shared reader-shell mounting
+- EPUB rect capture fallback behavior
+- note-overlay persistence after highlight creation even when the browser selection collapses
+
+Extended shared reader coverage to protect the highlight path as well:
+
+- `tests/reader-platform.test.ts` now exercises whitespace-normalized repeated quote matching and guards the one-baseline highlight planning path
+- `tests/media-reader-runtime-stability.test.ts` now verifies media readers scope selection/highlight work to the content surface instead of the whole shared shell
+
+Existing reader regression coverage remained green, including the PDF and EPUB selection stability tests.
+
+Validation results after the final highlight hotfix:
+
+- `node --test tests/*.test.ts` passed
+- `npm run build` passed
+
+Post-implementation hotfix:
+
+- narrowed `ReaderSelectionOverlayHost` placement and keyboard effect dependencies away from the entire overlay state object
+- added placement equality guarding before `setPlacement`
+- added structural regression coverage so the host does not reintroduce the same maximum update depth loop
+- kept unified note mode open after highlight creation even when the browser selection collapses, so the quick-note composer no longer flashes closed immediately after activation
+
+Post-implementation highlight user-journey hardening:
+
+- reworked `renderReaderQuoteHighlights()` to match quotes against one whitespace-normalized baseline text snapshot instead of requiring the entire quote to live inside a single text node
+- applied DOM highlight wrapping from the end of the document toward the start so multi-node and repeated-quote annotations can coexist without corrupting later matches
+- narrowed YouTube and Podcast selection/highlight scoping from the whole `SharedReader` shell to the actual content surface so sidebar text can no longer steal highlight matches
+- preserved EPUB on its rendition-native annotation path; the DOM matcher hardening primarily fixes Markdown, PDF, and transcript-style surfaces with fragmented text nodes
+
+Known baseline issues outside this implementation scope:
+
+- `npm run lint` currently fails because `eslint` is not available in the environment (`sh: eslint: command not found`)
+- `./node_modules/.bin/tsc --noEmit` still reports pre-existing repository errors unrelated to this overlay work:
+  - `app/channels/[id]/page.tsx` missing `avatarUrl` on a `ChannelDetail`
+  - `components/readers/youtube-reader.tsx` accesses `content.language` though `ContentItem` does not declare it
+  - `components/readers/podcast-reader.tsx` accesses `content.language` though `ContentItem` does not declare it
+  - `lib/reader-debug-fixtures.ts` imports `./mock-data.ts` with a `.ts` extension

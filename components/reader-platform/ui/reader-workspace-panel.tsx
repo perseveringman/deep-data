@@ -3,7 +3,11 @@
 import { Languages, Sparkles, WandSparkles } from 'lucide-react'
 
 import type { ReaderAnalysisContext } from '@/components/reader-platform/analysis'
-import type { ReaderAnnotation, ReaderHighlightColor } from '@/components/reader-platform/annotations'
+import {
+  readerHighlightColors,
+  type ReaderAnnotation,
+  type ReaderHighlightColor,
+} from '@/components/reader-platform/annotations'
 import type { ReaderActiveUnit, ReaderCapabilities, ReaderSelection } from '@/components/reader-platform/core'
 import type { TranslationProvider, TranslationResponse, TranslationScope } from '@/components/reader-platform/translation'
 import { Badge } from '@/components/ui/badge'
@@ -19,8 +23,13 @@ import {
 import { cn } from '@/lib/utils'
 
 import { AnnotationSidebar } from './annotation-sidebar'
+import {
+  getReaderWorkspaceRootId,
+  getReaderWorkspaceSectionId,
+} from './reader-workspace-ids'
 
 interface ReaderWorkspacePanelProps {
+  idPrefix?: string
   capabilities: ReaderCapabilities
   selection?: ReaderSelection | null
   activeUnit?: ReaderActiveUnit | null
@@ -42,8 +51,6 @@ interface ReaderWorkspacePanelProps {
   onDeleteAnnotation?: (annotationId: string) => void
 }
 
-const annotationColors: ReaderHighlightColor[] = ['yellow', 'green', 'blue', 'pink', 'purple']
-
 function scopeEnabled(scope: TranslationScope, selection?: ReaderSelection | null, activeUnit?: ReaderActiveUnit | null, capabilities?: ReaderCapabilities) {
   if (!capabilities?.translation) return false
 
@@ -59,6 +66,7 @@ function scopeEnabled(scope: TranslationScope, selection?: ReaderSelection | nul
 }
 
 export function ReaderWorkspacePanel({
+  idPrefix = 'reader-workspace',
   capabilities,
   selection,
   activeUnit,
@@ -80,7 +88,7 @@ export function ReaderWorkspacePanel({
   onDeleteAnnotation,
 }: ReaderWorkspacePanelProps) {
   return (
-    <div className="space-y-3">
+    <div id={getReaderWorkspaceRootId(idPrefix)} className="space-y-3">
       <div className="rounded border p-3">
         <div className="mb-2 flex items-center gap-2 text-sm font-medium">
           <WandSparkles className="h-4 w-4" />
@@ -94,7 +102,7 @@ export function ReaderWorkspacePanel({
               {selection.text}
             </blockquote>
             <div className="flex flex-wrap gap-2">
-              {annotationColors.map((color) => (
+              {readerHighlightColors.map((color) => (
                 <Button key={color} size="sm" variant="outline" onClick={() => onCreateAnnotation(color)}>
                   高亮 {color}
                 </Button>
@@ -118,7 +126,11 @@ export function ReaderWorkspacePanel({
         ) : null}
       </div>
 
-      <div className="rounded border p-3">
+      <div
+        id={getReaderWorkspaceSectionId(idPrefix, 'translation')}
+        tabIndex={-1}
+        className="rounded border p-3 outline-none"
+      >
         <div className="mb-3 flex items-center gap-2 text-sm font-medium">
           <Languages className="h-4 w-4" />
           翻译
@@ -176,7 +188,11 @@ export function ReaderWorkspacePanel({
         ) : null}
       </div>
 
-      <div className="rounded border p-3">
+      <div
+        id={getReaderWorkspaceSectionId(idPrefix, 'ai')}
+        tabIndex={-1}
+        className="rounded border p-3 outline-none"
+      >
         <div className="mb-2 flex items-center gap-2 text-sm font-medium">
           <Sparkles className="h-4 w-4" />
           AI Context Bridge
@@ -193,7 +209,11 @@ export function ReaderWorkspacePanel({
         </pre>
       </div>
 
-      <div className="h-[28rem] min-h-0 rounded border">
+      <div
+        id={getReaderWorkspaceSectionId(idPrefix, 'annotations')}
+        tabIndex={-1}
+        className="h-[28rem] min-h-0 rounded border outline-none"
+      >
         <AnnotationSidebar
           annotations={annotations}
           activeAnnotationId={activeAnnotationId}

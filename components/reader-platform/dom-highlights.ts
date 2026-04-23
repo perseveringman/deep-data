@@ -20,9 +20,29 @@ function clearReaderHighlights(root: HTMLElement) {
   })
 }
 
-function highlightSingleQuote(root: HTMLElement, annotation: ReaderAnnotation) {
-  const quote = annotation.range.quote?.exact?.trim()
-  if (!quote) return
+interface HighlightTextSegment {
+  node: Text
+  text: string
+  start: number
+  end: number
+}
+
+interface NormalizedHighlightText {
+  text: string
+  map: Array<{
+    rawStart: number
+    rawEnd: number
+  }>
+}
+
+interface HighlightMatchRange {
+  start: number
+  end: number
+}
+
+function collectHighlightTextSegments(root: HTMLElement): HighlightTextSegment[] {
+  const segments: HighlightTextSegment[] = []
+  let offset = 0
 
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
@@ -40,25 +60,156 @@ function highlightSingleQuote(root: HTMLElement, annotation: ReaderAnnotation) {
   while (walker.nextNode()) {
     const node = walker.currentNode as Text
     const text = node.textContent ?? ''
-    const start = text.indexOf(quote)
-    if (start === -1) continue
+    segments.push({
+      node,
+      text,
+      start: offset,
+      end: offset + text.length,
+    })
+    offset += text.length
+  }
 
-    const matchedNode = node.splitText(start)
-    matchedNode.splitText(quote.length)
+  return segments
+}
 
-    const highlight = document.createElement('mark')
-    highlight.dataset.readerAnnotationId = annotation.id
-    highlight.className = highlightClassByColor[annotation.color]
-    highlight.textContent = matchedNode.textContent
+export function normalizeHighlightText(text: string): NormalizedHighlightText {
+  const normalizedChars: string[] = []
+  const map: NormalizedHighlightText['map'] = []
 
-    matchedNode.parentNode?.replaceChild(highlight, matchedNode)
+  let index = 0
+  while (index < text.length) {
+    const char = text[index]
+    if (/\s/.test(char)) {
+      let whitespaceEnd = index + 1
+      while (whitespaceEnd < text.length && /\s/.test(text[whitespaceEnd])) {
+        whitespaceEnd += 1
+      }
+
+      if (normalizedChars.length > 0 && whitespaceEnd < text.length) {
+        normalizedChars.push(' ')
+        map.push({
+          rawStart: index,
+          rawEnd: whitespaceEnd,
+        })
+      }
+
+      index = whitespaceEnd
+      continue
+    }
+
+    normalizedChars.push(char)
+    map.push({
+      rawStart: index,
+      rawEnd: index + 1,
+    })
+    index += 1
+  }
+
+  return {
+    text: normalizedChars.join(''),
+    map,
+  }
+}
+
+function rangesOverlap(a: HighlightMatchRange, b: HighlightMatchRange) {
+  return a.start < b.end && b.start < a.end
+}
+
+export function findHighlightQuoteMatch(
+  contentText: string,
+  quote: string,
+  claimedRanges: HighlightMatchRange[] = [],
+): HighlightMatchRange | null {
+  const normalizedContent = normalizeHighlightText(contentText)
+  const normalizedQuote = normalizeHighlightText(quote).text
+
+  if (!normalizedQuote || normalizedContent.text.length === 0) {
+    return null
+  }
+
+  let searchStart = 0
+  while (searchStart < normalizedContent.text.length) {
+    const matchIndex = normalizedContent.text.indexOf(normalizedQuote, searchStart)
+    if (matchIndex === -1) {
+      return null
+    }
+
+    const first = normalizedContent.map[matchIndex]
+    const last = normalizedContent.map[matchIndex + normalizedQuote.length - 1]
+    const match = {
+      start: first.rawStart,
+      end: last.rawEnd,
+    }
+
+    if (!claimedRanges.some((claimed) => rangesOverlap(claimed, match))) {
+      return match
+    }
+
+    searchStart = matchIndex + 1
+  }
+
+  return null
+}
+
+function wrapHighlightSegment(
+  node: Text,
+  annotation: ReaderAnnotation,
+  startOffset: number,
+  endOffset: number,
+) {
+  if (!node.parentNode || startOffset >= endOffset) {
     return
   }
+
+  const targetNode = startOffset > 0 ? node.splitText(startOffset) : node
+  const trailingOffset = endOffset - startOffset
+  targetNode.splitText(trailingOffset)
+
+  const highlight = document.createElement('mark')
+  highlight.dataset.readerAnnotationId = annotation.id
+  highlight.className = highlightClassByColor[annotation.color]
+  highlight.textContent = targetNode.textContent
+
+  targetNode.parentNode?.replaceChild(highlight, targetNode)
+}
+
+function applyHighlightMatch(
+  segments: HighlightTextSegment[],
+  annotation: ReaderAnnotation,
+  match: HighlightMatchRange,
+) {
+  segments
+    .filter((segment) => segment.end > match.start && segment.start < match.end)
+    .sort((a, b) => b.start - a.start)
+    .forEach((segment) => {
+      const localStart = Math.max(0, match.start - segment.start)
+      const localEnd = Math.min(segment.text.length, match.end - segment.start)
+      wrapHighlightSegment(segment.node, annotation, localStart, localEnd)
+    })
 }
 
 export function renderReaderQuoteHighlights(root: HTMLElement | null, annotations: ReaderAnnotation[]) {
   if (!root) return
 
   clearReaderHighlights(root)
-  annotations.forEach((annotation) => highlightSingleQuote(root, annotation))
+  const segments = collectHighlightTextSegments(root)
+  const contentText = segments.map((segment) => segment.text).join('')
+  const claimedRanges: HighlightMatchRange[] = []
+  const plannedHighlights = annotations
+    .map((annotation) => {
+      const quote = annotation.range.quote?.exact?.trim()
+      if (!quote) return null
+
+      const match = findHighlightQuoteMatch(contentText, quote, claimedRanges)
+      if (!match) return null
+
+      claimedRanges.push(match)
+      return { annotation, match }
+    })
+    .filter((planned): planned is { annotation: ReaderAnnotation; match: HighlightMatchRange } => Boolean(planned))
+    .sort((a, b) => b.match.start - a.match.start)
+
+  plannedHighlights.forEach(({ annotation, match }) => {
+    applyHighlightMatch(segments, annotation, match)
+  })
 }

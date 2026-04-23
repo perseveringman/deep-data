@@ -72,10 +72,20 @@ export interface ReaderSearchResult {
   contextAfter?: string
 }
 
+export interface ReaderSelectionAnchorRect {
+  top: number
+  left: number
+  right: number
+  bottom: number
+  width: number
+  height: number
+}
+
 export interface ReaderSelection {
   text: string
   markdown?: string
   html?: string
+  anchorRect?: ReaderSelectionAnchorRect
   range: ReaderRange
 }
 

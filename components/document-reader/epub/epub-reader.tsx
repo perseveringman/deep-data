@@ -1,7 +1,7 @@
 'use client'
 
 import ePub from 'epubjs'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 
 import { DocumentShell } from '@/components/document-reader/shared'
 import type {
@@ -19,6 +19,9 @@ import {
   defaultReaderPreferenceCapabilities,
   defaultReaderPreferences,
   getReaderPreferenceCssVariables,
+  getRangeAnchorRect,
+  offsetSelectionAnchorRect,
+  ReaderSelectionOverlayHost,
   ReaderWorkspacePanel,
   resolveReaderPreferences,
   useReaderRuntime,
@@ -61,6 +64,7 @@ export function EpubReader({
   const renditionRef = useRef<any>(null)
   const objectUrlRef = useRef<string | null>(null)
   const renderedAnnotationCfisRef = useRef<string[]>([])
+  const workspacePanelId = useId().replace(/:/g, '')
 
   const [toc, setToc] = useState<ReaderTocItem[]>([])
   const [location, setLocation] = useState<string>(initialLocation ?? '')
@@ -176,11 +180,28 @@ export function EpubReader({
       })
 
       rendition.on('selected', (cfiRange: string, contents: any) => {
-        const text = contents?.window?.getSelection?.()?.toString?.() ?? ''
+        const scopedSelection = contents?.window?.getSelection?.()
+        const selectedRange =
+          scopedSelection && scopedSelection.rangeCount > 0
+            ? scopedSelection.getRangeAt(0)
+            : null
+        const text = scopedSelection?.toString?.() ?? ''
+        const frameElement = contents?.document?.defaultView?.frameElement
+        const frameRect =
+          frameElement instanceof Element ? frameElement.getBoundingClientRect() : null
+        const baseAnchorRect = selectedRange ? getRangeAnchorRect(selectedRange) : undefined
+        const anchorRect =
+          baseAnchorRect && frameRect
+            ? offsetSelectionAnchorRect(baseAnchorRect, {
+                top: frameRect.top,
+                left: frameRect.left,
+              })
+            : baseAnchorRect
         setSelection(
           text
             ? {
                 text,
+                anchorRect,
                 range: { start: { kind: 'cfi', cfi: cfiRange }, quote: { exact: text } },
               }
             : null,
@@ -308,6 +329,22 @@ export function EpubReader({
       onPrev={() => void renditionRef.current?.prev?.()}
       onNext={() => void renditionRef.current?.next?.()}
       footerInfo={<span>{location ? `位置: ${location}` : '位置加载中'}</span>}
+      contentOverlay={
+        <ReaderSelectionOverlayHost
+          surfaceRef={containerRef}
+          selection={selection}
+          capabilities={capabilities}
+          analysisContext={runtime.analysisContext}
+          selectionMenuEnabled={resolvedPreferences.behavior.selectionMenu !== false}
+          reduceMotion={resolvedPreferences.behavior.reduceMotion === true}
+          canTranslate={runtime.translation.canTranslate}
+          requestSelectionTranslation={() => runtime.translation.requestTranslation('selection')}
+          createHighlight={(color = 'yellow') => runtime.createAnnotationFromSelection(color)}
+          updateNoteBody={runtime.updateAnnotationBody}
+          updateHighlightColor={runtime.updateAnnotationColor}
+          workspacePanelIdPrefix={workspacePanelId}
+        />
+      }
       content={
         <div className="h-[calc(100vh-180px)] p-4" style={cssVars}>
           <div ref={containerRef} className="h-full w-full overflow-hidden rounded border bg-background" />
@@ -315,6 +352,7 @@ export function EpubReader({
       }
       rightSidebarExtra={
         <ReaderWorkspacePanel
+          idPrefix={workspacePanelId}
           capabilities={capabilities}
           selection={selection}
           activeUnit={activeUnit}

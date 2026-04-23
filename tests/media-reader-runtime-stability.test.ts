@@ -18,5 +18,9 @@ for (const relativePath of [
     assert.match(source, /const resolvedPreferences = useMemo\(/)
     assert.match(source, /preferences: resolvedPreferences/)
     assert.match(source, /const activeUnit = useMemo\(/)
+    assert.match(source, /const contentSurfaceRef = useRef<HTMLDivElement>\(null\)/)
+    assert.match(source, /root: contentSurfaceRef\.current/)
+    assert.match(source, /renderReaderQuoteHighlights\(contentSurfaceRef\.current, runtime\.annotations\)/)
+    assert.match(source, /surfaceRef=\{contentSurfaceRef\}/)
   })
 }
