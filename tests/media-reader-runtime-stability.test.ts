@@ -15,7 +15,7 @@ for (const relativePath of [
     const source = await readSource(relativePath)
 
     assert.match(source, /const mergedMessages = useMemo\(\(\) => resolveReaderMessages\(messages\), \[messages\]\)/)
-    assert.match(source, /const resolvedPreferences = useMemo\(/)
+    assert.match(source, /const resolvedPreferences = (useMemo\(|managedPreferences\.preferences)/)
     assert.match(source, /preferences: resolvedPreferences/)
     assert.match(source, /const activeUnit = useMemo\(/)
     assert.match(source, /const contentSurfaceRef = useRef<HTMLDivElement>\(null\)/)

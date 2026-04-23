@@ -4,15 +4,18 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { format } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
 import {
+  clearStoredReaderLocator,
   defaultReaderCapabilities,
-  defaultReaderPreferences,
+  defaultReaderPreferenceCapabilities,
   getScopedSelection,
+  readStoredReaderLocator,
   ReaderSelectionOverlayHost,
   ReaderSelection,
   ReaderWorkspacePanel,
   renderReaderQuoteHighlights,
-  resolveReaderPreferences,
+  useManagedReaderPreferences,
   useReaderRuntime,
+  writeStoredReaderLocator,
 } from '@/components/reader-platform'
 import {
   Calendar,
@@ -48,6 +51,8 @@ export function PodcastReader({
   dateLocale = zhCN,
   dateFormat = 'yyyy/M/d',
   messages,
+  preferences,
+  onPreferencesChange,
   onProgressChange,
   onSessionSnapshotChange,
   translationExecutor,
@@ -61,6 +66,7 @@ export function PodcastReader({
   const audioRef = useRef<HTMLAudioElement>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const contentSurfaceRef = useRef<HTMLDivElement>(null)
+  const restoredTimeAppliedRef = useRef(false)
   const workspacePanelId = useId().replace(/:/g, '')
   const mergedMessages = useMemo(() => resolveReaderMessages(messages), [messages])
 
@@ -71,6 +77,12 @@ export function PodcastReader({
   const [isMuted, setIsMuted] = useState(false)
   const [playbackRate, setPlaybackRate] = useState(1)
   const [selection, setSelection] = useState<ReaderSelection | null>(null)
+  const [restoredTimeMs, setRestoredTimeMs] = useState<number | null>(null)
+  const managedPreferences = useManagedReaderPreferences({
+    identity,
+    basePreferences: preferences,
+    onPreferencesChange,
+  })
 
   const audioSrc = canRenderAudioSource(data.audioUrl) ? data.audioUrl : undefined
   const timelineDuration = duration || data.durationMs || 0
@@ -118,6 +130,27 @@ export function PodcastReader({
       audio.removeEventListener('ratechange', syncState)
     }
   }, [audioSrc])
+
+  useEffect(() => {
+    const audio = audioRef.current
+    if (!audio || restoredTimeAppliedRef.current || !restoredTimeMs) return
+
+    const applyRestoredTime = () => {
+      audio.currentTime = restoredTimeMs / 1000
+      setCurrentTime(restoredTimeMs)
+      restoredTimeAppliedRef.current = true
+    }
+
+    if (audio.readyState >= 1) {
+      applyRestoredTime()
+      return
+    }
+
+    audio.addEventListener('loadedmetadata', applyRestoredTime, { once: true })
+    return () => {
+      audio.removeEventListener('loadedmetadata', applyRestoredTime)
+    }
+  }, [restoredTimeMs])
 
   const sidebarSections = useMemo<ReaderSidebarSection[]>(() => {
     const sections: ReaderSidebarSection[] = []
@@ -252,10 +285,25 @@ export function PodcastReader({
     }),
     [chapters.length],
   )
-  const resolvedPreferences = useMemo(
-    () => resolveReaderPreferences({ systemDefaults: defaultReaderPreferences }),
+  const preferenceCapabilities = useMemo(
+    () => ({
+      ...defaultReaderPreferenceCapabilities,
+      typography: {
+        ...defaultReaderPreferenceCapabilities.typography,
+        contentWidth: false,
+      },
+      layout: {
+        ...defaultReaderPreferenceCapabilities.layout,
+        tocVisible: false,
+      },
+      behavior: {
+        ...defaultReaderPreferenceCapabilities.behavior,
+        scrollMode: false,
+      },
+    }),
     [],
   )
+  const resolvedPreferences = managedPreferences.preferences
   const runtime = useReaderRuntime({
     document: identity,
     capabilities,
@@ -270,6 +318,21 @@ export function PodcastReader({
     onAnnotationChange,
     onAnalysisContextChange,
   })
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    restoredTimeAppliedRef.current = false
+
+    if (resolvedPreferences.behavior.rememberLastLocation === false) {
+      clearStoredReaderLocator(window.localStorage, identity)
+      setRestoredTimeMs(null)
+      return
+    }
+
+    const locator = readStoredReaderLocator(window.localStorage, identity)
+    setRestoredTimeMs(locator?.kind === 'time' ? locator.timeMs : null)
+  }, [identity, resolvedPreferences.behavior.rememberLastLocation])
 
   useEffect(() => {
     const handleSelection = () => {
@@ -310,11 +373,28 @@ export function PodcastReader({
     })
     onSessionSnapshotChange?.(snapshot)
     runtime.updateSessionSnapshot(snapshot)
+
+    if (typeof window === 'undefined') return
+
+    if (
+      resolvedPreferences.behavior.autoSaveProgress !== false &&
+      resolvedPreferences.behavior.rememberLastLocation !== false
+    ) {
+      writeStoredReaderLocator(window.localStorage, identity, {
+        kind: 'time',
+        timeMs: currentTime,
+      })
+      return
+    }
+
+    clearStoredReaderLocator(window.localStorage, identity)
   }, [
     currentTime,
     identity,
     onProgressChange,
     onSessionSnapshotChange,
+    resolvedPreferences.behavior.autoSaveProgress,
+    resolvedPreferences.behavior.rememberLastLocation,
     runtime.annotations.length,
     runtime.updateSessionSnapshot,
     selection,
@@ -539,6 +619,10 @@ export function PodcastReader({
       className={className}
       contentHeightClassName={contentHeightClassName}
       sidebarStickyTopClassName={sidebarStickyTopClassName}
+      preferences={resolvedPreferences}
+      preferenceCapabilities={preferenceCapabilities}
+      onPreferencesChange={managedPreferences.updatePreferences}
+      onPreferencesReset={managedPreferences.resetPreferences}
       overlay={
         <ReaderSelectionOverlayHost
           surfaceRef={contentSurfaceRef}

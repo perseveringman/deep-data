@@ -21,13 +21,15 @@ import type {
 import {
   defaultReaderCapabilities,
   defaultReaderPreferenceCapabilities,
-  defaultReaderPreferences,
+  clearStoredReaderLocator,
   getScopedSelection,
+  readStoredReaderLocator,
   ReaderSelectionOverlayHost,
   ReaderWorkspacePanel,
   renderReaderQuoteHighlights,
-  resolveReaderPreferences,
+  useManagedReaderPreferences,
   useReaderRuntime,
+  writeStoredReaderLocator,
 } from '@/components/reader-platform'
 
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`
@@ -54,6 +56,25 @@ function sourceToFile(source: PdfReaderSource): string | File | { data: Uint8Arr
 
 function isPdfTransportDestroyedError(error: unknown): boolean {
   return error instanceof Error && error.message.includes('Transport destroyed')
+}
+
+function clampPage(page: number, numPages: number): number {
+  if (numPages <= 0) return Math.max(1, page)
+  return Math.max(1, Math.min(numPages, page))
+}
+
+function getPdfPageWidth(contentWidth?: 'narrow' | 'medium' | 'wide' | 'full'): number {
+  switch (contentWidth) {
+    case 'narrow':
+      return 720
+    case 'wide':
+      return 980
+    case 'full':
+      return 1180
+    case 'medium':
+    default:
+      return 860
+  }
 }
 
 function flattenOutline(items: any[] | null | undefined, depth = 1): ReaderTocItem[] {
@@ -86,7 +107,10 @@ export function PdfReader({
   onAnalysisContextChange,
 }: PdfReaderProps) {
   const contentRef = useRef<HTMLDivElement>(null)
+  const viewportRef = useRef<HTMLDivElement>(null)
+  const pageRefs = useRef<Record<number, HTMLDivElement | null>>({})
   const loadTaskIdRef = useRef(0)
+  const restoredLocationAppliedRef = useRef(false)
   const workspacePanelId = useId().replace(/:/g, '')
   const [pageNumber, setPageNumber] = useState(initialPage)
   const [numPages, setNumPages] = useState(0)
@@ -94,6 +118,12 @@ export function PdfReader({
   const [textByPage, setTextByPage] = useState<Record<number, string>>({})
   const [searchQuery, setSearchQuery] = useState('')
   const [selection, setSelection] = useState<ReaderSelection | null>(null)
+  const [restoredPage, setRestoredPage] = useState<number | null>(null)
+  const managedPreferences = useManagedReaderPreferences({
+    identity,
+    basePreferences: preferences,
+    onPreferencesChange,
+  })
   const capabilities = useMemo(
     () => ({
       ...defaultReaderCapabilities,
@@ -109,10 +139,13 @@ export function PdfReader({
     }),
     [outline.length],
   )
-  const resolvedPreferences = useMemo(
-    () => resolveReaderPreferences({ systemDefaults: defaultReaderPreferences }, preferences),
-    [preferences],
+  const resolvedPreferences = managedPreferences.preferences
+  const scrollMode = resolvedPreferences.behavior.scrollMode === 'scrolled' ? 'scrolled' : 'paginated'
+  const pageWidth = useMemo(
+    () => getPdfPageWidth(resolvedPreferences.typography.contentWidth),
+    [resolvedPreferences.typography.contentWidth],
   )
+  const scrollBehavior = resolvedPreferences.behavior.reduceMotion ? 'auto' : 'smooth'
   const documentFile = useMemo(() => sourceToFile(source), [source])
   const documentOptions = useMemo(
     () => ({
@@ -151,6 +184,29 @@ export function PdfReader({
     onAnnotationChange,
     onAnalysisContextChange,
   })
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    restoredLocationAppliedRef.current = false
+
+    if (resolvedPreferences.behavior.rememberLastLocation === false) {
+      clearStoredReaderLocator(window.localStorage, identity)
+      setRestoredPage(null)
+      return
+    }
+
+    const locator = readStoredReaderLocator(window.localStorage, identity)
+    setRestoredPage(locator?.kind === 'page' ? locator.page : null)
+  }, [identity, initialPage, resolvedPreferences.behavior.rememberLastLocation])
+
+  useEffect(() => {
+    if (restoredLocationAppliedRef.current || restoredPage === null) return
+
+    const nextPage = clampPage(restoredPage, numPages)
+    setPageNumber(nextPage)
+    restoredLocationAppliedRef.current = true
+  }, [numPages, restoredPage])
 
   const searchResults = useMemo<ReaderSearchResult[]>(() => {
     const query = searchQuery.trim().toLowerCase()
@@ -238,6 +294,35 @@ export function PdfReader({
   }, [syncSelection])
 
   useEffect(() => {
+    if (scrollMode !== 'scrolled' || !viewportRef.current || numPages <= 0) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visibleEntries = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)
+
+        const nextPage = visibleEntries[0]?.target.getAttribute('data-page-number')
+        if (!nextPage) return
+
+        setPageNumber(Number(nextPage))
+      },
+      {
+        root: viewportRef.current,
+        threshold: [0.4, 0.6, 0.8],
+      },
+    )
+
+    Object.values(pageRefs.current).forEach((element) => {
+      if (element) {
+        observer.observe(element)
+      }
+    })
+
+    return () => observer.disconnect()
+  }, [numPages, scrollMode])
+
+  useEffect(() => {
     onPageChange?.(pageNumber)
     onProgressChange?.({
       documentId: identity.documentId,
@@ -263,6 +348,21 @@ export function PdfReader({
       visibleContent,
       annotationsCount: runtime.annotations.length,
     } satisfies ReaderSessionSnapshot)
+
+    if (typeof window === 'undefined') return
+
+    if (
+      resolvedPreferences.behavior.autoSaveProgress !== false &&
+      resolvedPreferences.behavior.rememberLastLocation !== false
+    ) {
+      writeStoredReaderLocator(window.localStorage, identity, {
+        kind: 'page',
+        page: pageNumber,
+      })
+      return
+    }
+
+    clearStoredReaderLocator(window.localStorage, identity)
   }, [
     identity,
     numPages,
@@ -270,6 +370,8 @@ export function PdfReader({
     onProgressChange,
     onSessionSnapshotChange,
     pageNumber,
+    resolvedPreferences.behavior.autoSaveProgress,
+    resolvedPreferences.behavior.rememberLastLocation,
     runtime.annotations.length,
     runtime.updateSessionSnapshot,
     selection,
@@ -284,23 +386,81 @@ export function PdfReader({
     renderReaderQuoteHighlights(contentRef.current, runtime.annotations)
   }, [runtime.annotations])
 
+  const goToPage = useCallback(
+    (nextPage: number) => {
+      const clampedPage = clampPage(nextPage, numPages)
+
+      if (scrollMode === 'scrolled') {
+        setPageNumber(clampedPage)
+        pageRefs.current[clampedPage]?.scrollIntoView({
+          behavior: scrollBehavior,
+          block: 'start',
+        })
+        return
+      }
+
+      setPageNumber(clampedPage)
+    },
+    [numPages, scrollBehavior, scrollMode],
+  )
+
   const documentContent = useMemo(
     () => (
-      <div ref={contentRef} className="flex justify-center p-6" style={{ gap: 'var(--reader-page-gap)' }}>
+      <div
+        ref={viewportRef}
+        className="h-[calc(100vh-180px)] overflow-y-auto p-6"
+        style={{ backgroundColor: 'var(--reader-muted-background)' }}
+      >
         <Document
           file={documentFile}
           options={documentOptions}
           onLoadSuccess={handleDocumentLoadSuccess}
         >
-          <Page
-            pageNumber={pageNumber}
-            width={900}
-            onRenderTextLayerSuccess={handleTextLayerRenderSuccess}
-          />
+          <div
+            ref={contentRef}
+            className="flex items-start justify-center"
+            style={{
+              gap: 'var(--reader-page-gap)',
+              flexDirection: scrollMode === 'scrolled' ? 'column' : 'row',
+            }}
+          >
+            {(scrollMode === 'scrolled'
+              ? Array.from({ length: numPages || 0 }, (_, index) => index + 1)
+              : [pageNumber]
+            ).map((page) => (
+              <div
+                key={page}
+                data-page-number={page}
+                ref={(element) => {
+                  pageRefs.current[page] = element
+                }}
+                className="mx-auto rounded border bg-white shadow-sm"
+                style={{
+                  borderColor: 'var(--reader-border-color)',
+                  boxShadow: 'var(--reader-surface-shadow)',
+                }}
+              >
+                <Page
+                  pageNumber={page}
+                  width={pageWidth}
+                  onRenderTextLayerSuccess={handleTextLayerRenderSuccess}
+                />
+              </div>
+            ))}
+          </div>
         </Document>
       </div>
     ),
-    [documentFile, documentOptions, handleDocumentLoadSuccess, handleTextLayerRenderSuccess, pageNumber],
+    [
+      documentFile,
+      documentOptions,
+      handleDocumentLoadSuccess,
+      handleTextLayerRenderSuccess,
+      numPages,
+      pageNumber,
+      pageWidth,
+      scrollMode,
+    ],
   )
 
   return (
@@ -320,13 +480,14 @@ export function PdfReader({
           textAlign: false,
         },
       }}
-      preferences={preferences}
-      onPreferencesChange={onPreferencesChange}
+      preferences={managedPreferences.preferencePatch}
+      onPreferencesChange={managedPreferences.updatePreferences}
+      onPreferencesReset={managedPreferences.resetPreferences}
       toc={outline}
       activeTocId={`page-${pageNumber}`}
       onTocSelect={(item) => {
         if (item.locator.kind === 'page') {
-          setPageNumber(item.locator.page)
+          goToPage(item.locator.page)
         }
       }}
       searchQuery={searchQuery}
@@ -334,11 +495,11 @@ export function PdfReader({
       searchResults={searchResults}
       onSearchResultSelect={(item) => {
         if (item.locator.kind === 'page') {
-          setPageNumber(item.locator.page)
+          goToPage(item.locator.page)
         }
       }}
-      onPrev={pageNumber > 1 ? () => setPageNumber((current) => current - 1) : undefined}
-      onNext={pageNumber < numPages ? () => setPageNumber((current) => current + 1) : undefined}
+      onPrev={pageNumber > 1 ? () => goToPage(pageNumber - 1) : undefined}
+      onNext={pageNumber < numPages ? () => goToPage(pageNumber + 1) : undefined}
       footerInfo={
         <div className="flex items-center justify-between">
           <span>
@@ -394,7 +555,7 @@ export function PdfReader({
           onSelectAnnotation={(annotation) => {
             runtime.selectAnnotation(annotation.id)
             if (annotation.range.start.kind === 'page') {
-              setPageNumber(annotation.range.start.page)
+              goToPage(annotation.range.start.page)
             }
           }}
           onUpdateAnnotationBody={runtime.updateAnnotationBody}

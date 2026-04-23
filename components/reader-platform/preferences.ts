@@ -265,14 +265,90 @@ export function getPresetById(presetId: string, presets: ReaderPresetDefinition[
   return presets.find((preset) => preset.id === presetId)
 }
 
+function getThemePalette(preferences: ReaderPreferences) {
+  const mode = preferences.theme.mode
+  const highContrast = preferences.theme.contrast === 'high'
+
+  switch (mode) {
+    case 'light':
+      return {
+        canvas: 'oklch(0.985 0 0)',
+        surface: 'oklch(1 0 0)',
+        text: highContrast ? 'oklch(0.06 0 0)' : 'oklch(0.12 0 0)',
+        mutedSurface: 'oklch(0.965 0 0)',
+        mutedText: highContrast ? 'oklch(0.18 0 0)' : 'oklch(0.42 0 0)',
+        border: highContrast ? 'oklch(0.62 0 0)' : 'oklch(0.88 0 0)',
+      }
+    case 'dark':
+      return {
+        canvas: 'oklch(0.08 0 0)',
+        surface: 'oklch(0.13 0 0)',
+        text: highContrast ? 'oklch(0.99 0 0)' : 'oklch(0.95 0 0)',
+        mutedSurface: 'oklch(0.18 0 0)',
+        mutedText: highContrast ? 'oklch(0.88 0 0)' : 'oklch(0.7 0 0)',
+        border: highContrast ? 'oklch(0.78 0 0)' : 'oklch(0.28 0 0)',
+      }
+    case 'sepia':
+      return {
+        canvas: 'oklch(0.96 0.02 82)',
+        surface: 'oklch(0.985 0.015 82)',
+        text: highContrast ? 'oklch(0.2 0.03 68)' : 'oklch(0.3 0.02 68)',
+        mutedSurface: 'oklch(0.94 0.02 82)',
+        mutedText: highContrast ? 'oklch(0.32 0.02 70)' : 'oklch(0.48 0.02 70)',
+        border: highContrast ? 'oklch(0.55 0.02 75)' : 'oklch(0.85 0.02 80)',
+      }
+    case 'system':
+    default:
+      return {
+        canvas: 'var(--background)',
+        surface: 'var(--card)',
+        text: 'var(--card-foreground)',
+        mutedSurface: 'var(--muted)',
+        mutedText: highContrast ? 'var(--foreground)' : 'var(--muted-foreground)',
+        border: highContrast ? 'var(--foreground)' : 'var(--border)',
+      }
+  }
+}
+
+function getSurfaceShadow(preferences: ReaderPreferences): string {
+  switch (preferences.theme.surfaceStyle) {
+    case 'flat':
+      return 'none'
+    case 'elevated':
+      return preferences.theme.mode === 'dark'
+        ? '0 18px 48px rgba(0, 0, 0, 0.35)'
+        : '0 18px 48px rgba(15, 23, 42, 0.12)'
+    case 'paper':
+    default:
+      return preferences.theme.mode === 'dark'
+        ? '0 8px 24px rgba(0, 0, 0, 0.22)'
+        : '0 8px 24px rgba(15, 23, 42, 0.06)'
+  }
+}
+
 export function getReaderPreferenceCssVariables(preferences: ReaderPreferences): Record<string, string> {
+  const palette = getThemePalette(preferences)
+  const compactDensity = preferences.layout.density === 'compact'
+
   return {
     '--reader-accent': preferences.theme.accentColor ?? 'hsl(var(--primary))',
+    '--reader-accent-soft': `color-mix(in oklch, ${preferences.theme.accentColor ?? 'hsl(var(--primary))'} 14%, transparent)`,
+    '--reader-canvas-background': palette.canvas,
+    '--reader-surface-background': palette.surface,
+    '--reader-surface-foreground': palette.text,
+    '--reader-muted-background': palette.mutedSurface,
+    '--reader-muted-foreground': palette.mutedText,
+    '--reader-border-color': palette.border,
+    '--reader-surface-shadow': getSurfaceShadow(preferences),
     '--reader-font-family': preferences.typography.fontFamily ?? 'var(--font-sans, ui-sans-serif)',
     '--reader-font-size': `${preferences.typography.fontSize ?? 16}px`,
+    '--reader-body-font-size': `calc(${preferences.typography.fontSize ?? 16}px * 0.78)`,
+    '--reader-meta-font-size': `calc(${preferences.typography.fontSize ?? 16}px * 0.66)`,
+    '--reader-title-font-size': `calc(${preferences.typography.fontSize ?? 16}px * 0.72)`,
     '--reader-line-height': `${preferences.typography.lineHeight ?? 1.7}`,
     '--reader-letter-spacing': `${preferences.typography.letterSpacing ?? 0}px`,
     '--reader-paragraph-spacing': `${preferences.typography.paragraphSpacing ?? 1}rem`,
+    '--reader-text-align': preferences.typography.textAlign ?? 'start',
     '--reader-content-width':
       preferences.typography.contentWidth === 'narrow'
         ? '42rem'
@@ -282,5 +358,10 @@ export function getReaderPreferenceCssVariables(preferences: ReaderPreferences):
             ? '100%'
             : '56rem',
     '--reader-page-gap': `${preferences.layout.pageGap ?? 16}px`,
+    '--reader-grid-gap': compactDensity ? '0.75rem' : '1rem',
+    '--reader-panel-padding': compactDensity ? '0.75rem' : '1rem',
+    '--reader-toolbar-padding': compactDensity ? '0.75rem' : '1rem',
+    '--reader-sidebar-width': compactDensity ? '18rem' : '20rem',
+    '--reader-nav-width': compactDensity ? '16rem' : '18rem',
   }
 }

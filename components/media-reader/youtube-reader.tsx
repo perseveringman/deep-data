@@ -6,15 +6,18 @@ import { zhCN } from 'date-fns/locale'
 import { Calendar, Clock, ExternalLink, Eye, ThumbsUp } from 'lucide-react'
 
 import {
+  clearStoredReaderLocator,
   defaultReaderCapabilities,
-  defaultReaderPreferences,
+  defaultReaderPreferenceCapabilities,
   getScopedSelection,
+  readStoredReaderLocator,
   ReaderSelectionOverlayHost,
   type ReaderSelection,
   ReaderWorkspacePanel,
   renderReaderQuoteHighlights,
-  resolveReaderPreferences,
+  useManagedReaderPreferences,
   useReaderRuntime,
+  writeStoredReaderLocator,
 } from '@/components/reader-platform'
 import {
   findActiveChapterIndex,
@@ -68,6 +71,8 @@ export function YouTubeReader({
   dateLocale = zhCN,
   dateFormat = 'yyyy/M/d',
   messages,
+  preferences,
+  onPreferencesChange,
   onProgressChange,
   onSessionSnapshotChange,
   translationExecutor,
@@ -82,6 +87,7 @@ export function YouTubeReader({
   const playerRef = useRef<YT.Player | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const contentSurfaceRef = useRef<HTMLDivElement>(null)
+  const restoredTimeAppliedRef = useRef(false)
   const playerId = useId().replace(/:/g, '')
   const workspacePanelId = useId().replace(/:/g, '')
 
@@ -89,6 +95,12 @@ export function YouTubeReader({
   const [isPlaying, setIsPlaying] = useState(false)
   const [loadError, setLoadError] = useState(false)
   const [selection, setSelection] = useState<ReaderSelection | null>(null)
+  const [restoredTimeMs, setRestoredTimeMs] = useState<number | null>(null)
+  const managedPreferences = useManagedReaderPreferences({
+    identity,
+    basePreferences: preferences,
+    onPreferencesChange,
+  })
 
   const videoId = data.videoId || getYouTubeVideoId(data.videoUrl)
   const transcript = data.transcript ?? []
@@ -120,6 +132,13 @@ export function YouTubeReader({
             rel: 0,
           },
           events: {
+            onReady: () => {
+              if (restoredTimeAppliedRef.current || !restoredTimeMs) return
+
+              playerRef.current?.seekTo(restoredTimeMs / 1000, true)
+              setCurrentTime(restoredTimeMs)
+              restoredTimeAppliedRef.current = true
+            },
             onStateChange: (event: YT.OnStateChangeEvent) => {
               setIsPlaying(event.data === window.YT.PlayerState.PLAYING)
             },
@@ -145,7 +164,7 @@ export function YouTubeReader({
       playerRef.current = null
       setIsPlaying(false)
     }
-  }, [playerId, videoId])
+  }, [playerId, restoredTimeMs, videoId])
 
   const sidebarSections = useMemo<ReaderSidebarSection[]>(() => {
     const sections: ReaderSidebarSection[] = []
@@ -261,10 +280,25 @@ export function YouTubeReader({
     }),
     [chapters.length],
   )
-  const resolvedPreferences = useMemo(
-    () => resolveReaderPreferences({ systemDefaults: defaultReaderPreferences }),
+  const preferenceCapabilities = useMemo(
+    () => ({
+      ...defaultReaderPreferenceCapabilities,
+      typography: {
+        ...defaultReaderPreferenceCapabilities.typography,
+        contentWidth: false,
+      },
+      layout: {
+        ...defaultReaderPreferenceCapabilities.layout,
+        tocVisible: false,
+      },
+      behavior: {
+        ...defaultReaderPreferenceCapabilities.behavior,
+        scrollMode: false,
+      },
+    }),
     [],
   )
+  const resolvedPreferences = managedPreferences.preferences
   const runtime = useReaderRuntime({
     document: identity,
     capabilities,
@@ -279,6 +313,21 @@ export function YouTubeReader({
     onAnnotationChange,
     onAnalysisContextChange,
   })
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    restoredTimeAppliedRef.current = false
+
+    if (resolvedPreferences.behavior.rememberLastLocation === false) {
+      clearStoredReaderLocator(window.localStorage, identity)
+      setRestoredTimeMs(null)
+      return
+    }
+
+    const locator = readStoredReaderLocator(window.localStorage, identity)
+    setRestoredTimeMs(locator?.kind === 'time' ? locator.timeMs : null)
+  }, [identity, resolvedPreferences.behavior.rememberLastLocation])
 
   const seekTo = (timeMs: number) => {
     const player = playerRef.current
@@ -327,12 +376,29 @@ export function YouTubeReader({
     })
     onSessionSnapshotChange?.(snapshot)
     runtime.updateSessionSnapshot(snapshot)
+
+    if (typeof window === 'undefined') return
+
+    if (
+      resolvedPreferences.behavior.autoSaveProgress !== false &&
+      resolvedPreferences.behavior.rememberLastLocation !== false
+    ) {
+      writeStoredReaderLocator(window.localStorage, identity, {
+        kind: 'time',
+        timeMs: currentTime,
+      })
+      return
+    }
+
+    clearStoredReaderLocator(window.localStorage, identity)
   }, [
     currentTime,
     data.durationMs,
     identity,
     onProgressChange,
     onSessionSnapshotChange,
+    resolvedPreferences.behavior.autoSaveProgress,
+    resolvedPreferences.behavior.rememberLastLocation,
     runtime.annotations.length,
     runtime.updateSessionSnapshot,
     selection,
@@ -440,6 +506,10 @@ export function YouTubeReader({
       className={className}
       contentHeightClassName={contentHeightClassName}
       sidebarStickyTopClassName={sidebarStickyTopClassName}
+      preferences={resolvedPreferences}
+      preferenceCapabilities={preferenceCapabilities}
+      onPreferencesChange={managedPreferences.updatePreferences}
+      onPreferencesReset={managedPreferences.resetPreferences}
       overlay={
         <ReaderSelectionOverlayHost
           surfaceRef={contentSurfaceRef}
@@ -506,6 +576,7 @@ declare global {
           videoId: string
           playerVars?: Record<string, number>
           events?: {
+            onReady?: () => void
             onStateChange?: (event: YT.OnStateChangeEvent) => void
           }
         }

@@ -15,11 +15,8 @@ import {
   defaultReaderPreferences,
   getReaderPreferenceCssVariables,
   resolveReaderPreferences,
-  deepMerge,
   type ReaderPreferenceCapabilities,
-  type ReaderPreferences,
   type ReaderPreferencesPatch,
-  type ReaderPreferencesChangeEvent,
 } from '@/components/reader-platform'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -35,7 +32,8 @@ export interface DocumentShellProps {
   capabilities?: Partial<ReaderCapabilities>
   preferenceCapabilities?: Partial<ReaderPreferenceCapabilities>
   preferences?: ReaderPreferencesPatch
-  onPreferencesChange?: (event: ReaderPreferencesChangeEvent) => void
+  onPreferencesChange?: (patch: ReaderPreferencesPatch) => void
+  onPreferencesReset?: () => void
   toc?: ReaderTocItem[]
   activeTocId?: string
   onTocSelect?: (item: ReaderTocItem) => void
@@ -86,9 +84,17 @@ function renderTocItems(
         onClick={() => onTocSelect?.(item)}
         className={cn(
           'flex w-full items-start rounded px-2 py-1 text-left text-sm transition-colors hover:bg-muted',
-          activeTocId === item.id && 'bg-muted font-medium text-foreground',
+          activeTocId === item.id && 'font-medium',
         )}
-        style={{ paddingLeft: `${depth * 12 + 8}px` }}
+        style={{
+          paddingLeft: `${depth * 12 + 8}px`,
+          ...(activeTocId === item.id
+            ? {
+                backgroundColor: 'var(--reader-accent-soft)',
+                color: 'var(--reader-accent)',
+              }
+            : {}),
+        }}
       >
         {item.title}
       </button>
@@ -111,6 +117,7 @@ export function DocumentShell({
   preferenceCapabilities,
   preferences,
   onPreferencesChange,
+  onPreferencesReset,
   toc = [],
   activeTocId,
   onTocSelect,
@@ -133,78 +140,128 @@ export function DocumentShell({
   const mergedPreferenceCapabilities = mergePreferenceCapabilities(preferenceCapabilities)
   const mergedPreferences = resolveReaderPreferences({ systemDefaults: defaultReaderPreferences }, preferences)
   const cssVars = getReaderPreferenceCssVariables(mergedPreferences) as CSSProperties
-
-  const emitPreferencePatch = (patch: ReaderPreferencesPatch) => {
-    if (!onPreferencesChange) return
-    const next = deepMerge(mergedPreferences, patch) as ReaderPreferences
-    onPreferencesChange({
-      next,
-      previous: mergedPreferences,
-      changedKeys: Object.keys(patch),
-      source: 'user',
-    })
-  }
+  const showNavigationPanel =
+    mergedPreferences.layout.tocVisible !== false && (mergedCapabilities.toc || mergedCapabilities.search)
+  const showContextSidebar = mergedPreferences.layout.sidebarVisible !== false
+  const contextSidebarOnLeft = showContextSidebar && mergedPreferences.layout.sidebarSide === 'left'
+  const panelStyle = {
+    backgroundColor: 'var(--reader-surface-background)',
+    color: 'var(--reader-surface-foreground)',
+    borderColor: 'var(--reader-border-color)',
+    boxShadow: 'var(--reader-surface-shadow)',
+  } satisfies CSSProperties
+  const mutedPanelStyle = {
+    backgroundColor: 'var(--reader-muted-background)',
+    color: 'var(--reader-muted-foreground)',
+    borderColor: 'var(--reader-border-color)',
+  } satisfies CSSProperties
 
   return (
     <div
       className={cn(
-        'grid min-h-[calc(100vh-80px)] grid-cols-1 gap-4 lg:grid-cols-[18rem_minmax(0,1fr)_20rem]',
+        'grid min-h-[calc(100vh-80px)] grid-cols-1 gap-[var(--reader-grid-gap)]',
+        showNavigationPanel && showContextSidebar
+          ? contextSidebarOnLeft
+            ? 'lg:grid-cols-[var(--reader-sidebar-width)_minmax(0,1fr)_var(--reader-nav-width)]'
+            : 'lg:grid-cols-[var(--reader-nav-width)_minmax(0,1fr)_var(--reader-sidebar-width)]'
+          : showNavigationPanel
+            ? 'lg:grid-cols-[var(--reader-nav-width)_minmax(0,1fr)]'
+            : showContextSidebar
+              ? contextSidebarOnLeft
+                ? 'lg:grid-cols-[var(--reader-sidebar-width)_minmax(0,1fr)]'
+                : 'lg:grid-cols-[minmax(0,1fr)_var(--reader-sidebar-width)]'
+              : 'lg:grid-cols-[minmax(0,1fr)]',
         className,
       )}
-      style={cssVars}
+      style={{
+        ...cssVars,
+        backgroundColor: 'var(--reader-canvas-background)',
+        color: 'var(--reader-surface-foreground)',
+      }}
       data-reader-theme={mergedPreferences.theme.mode}
     >
-      <aside className="hidden min-h-0 rounded-lg border bg-card lg:flex lg:flex-col">
-        <Tabs defaultValue={mergedCapabilities.toc ? 'toc' : 'search'} className="h-full gap-0">
-          <TabsList className="m-3 grid grid-cols-2">
-            {mergedCapabilities.toc ? <TabsTrigger value="toc">目录</TabsTrigger> : null}
-            {mergedCapabilities.search ? <TabsTrigger value="search">搜索</TabsTrigger> : null}
-          </TabsList>
+      {showNavigationPanel && !contextSidebarOnLeft ? (
+        <aside className="hidden min-h-0 rounded-lg border lg:flex lg:flex-col" style={panelStyle}>
+          <Tabs defaultValue={mergedCapabilities.toc ? 'toc' : 'search'} className="h-full gap-0">
+            <TabsList className="m-3 grid grid-cols-2" style={mutedPanelStyle}>
+              {mergedCapabilities.toc ? <TabsTrigger value="toc">目录</TabsTrigger> : null}
+              {mergedCapabilities.search ? <TabsTrigger value="search">搜索</TabsTrigger> : null}
+            </TabsList>
 
-          {mergedCapabilities.toc ? (
-            <TabsContent value="toc" className="min-h-0 flex-1">
-              <ScrollArea className="h-[calc(100vh-180px)] px-3 pb-3">
-                <div className="space-y-1">{renderTocItems(toc, { activeTocId, onTocSelect })}</div>
-              </ScrollArea>
-            </TabsContent>
-          ) : null}
+            {mergedCapabilities.toc ? (
+              <TabsContent value="toc" className="min-h-0 flex-1">
+                <ScrollArea className="h-[calc(100vh-180px)] px-3 pb-3">
+                  <div className="space-y-1">{renderTocItems(toc, { activeTocId, onTocSelect })}</div>
+                </ScrollArea>
+              </TabsContent>
+            ) : null}
 
-          {mergedCapabilities.search ? (
-            <TabsContent value="search" className="min-h-0 flex-1 space-y-3 px-3 pb-3">
-              <div className="relative">
-                <Search className="pointer-events-none absolute top-2.5 left-3 h-4 w-4 text-muted-foreground" />
-                <Input
-                  value={searchQuery}
-                  onChange={(event) => onSearchQueryChange?.(event.target.value)}
-                  placeholder="搜索当前内容"
-                  className="pl-9"
-                />
-              </div>
-
-              <ScrollArea className="h-[calc(100vh-220px)]">
-                <div className="space-y-2 pr-3">
-                  {searchResults.map((result) => (
-                    <button
-                      key={result.id}
-                      onClick={() => onSearchResultSelect?.(result)}
-                      className="w-full rounded border p-2 text-left hover:bg-muted"
-                    >
-                      <p className="text-xs text-muted-foreground">{result.contextBefore}</p>
-                      <p className="text-sm">{result.text}</p>
-                      <p className="text-xs text-muted-foreground">{result.contextAfter}</p>
-                    </button>
-                  ))}
+            {mergedCapabilities.search ? (
+              <TabsContent value="search" className="min-h-0 flex-1 space-y-3 px-3 pb-3">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute top-2.5 left-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    value={searchQuery}
+                    onChange={(event) => onSearchQueryChange?.(event.target.value)}
+                    placeholder="搜索当前内容"
+                    className="pl-9"
+                  />
                 </div>
-              </ScrollArea>
-            </TabsContent>
-          ) : null}
-        </Tabs>
 
-        {leftSidebarExtra ? <div className="border-t p-3">{leftSidebarExtra}</div> : null}
-      </aside>
+                <ScrollArea className="h-[calc(100vh-220px)]">
+                  <div className="space-y-2 pr-3">
+                    {searchResults.map((result) => (
+                      <button
+                        key={result.id}
+                        onClick={() => onSearchResultSelect?.(result)}
+                        className="w-full rounded border p-2 text-left hover:bg-muted/70"
+                        style={mutedPanelStyle}
+                      >
+                        <p className="text-xs text-muted-foreground">{result.contextBefore}</p>
+                        <p className="text-sm">{result.text}</p>
+                        <p className="text-xs text-muted-foreground">{result.contextAfter}</p>
+                      </button>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </TabsContent>
+            ) : null}
+          </Tabs>
+
+          {leftSidebarExtra ? (
+            <div className="border-t p-[var(--reader-panel-padding)]" style={{ borderColor: 'var(--reader-border-color)' }}>
+              {leftSidebarExtra}
+            </div>
+          ) : null}
+        </aside>
+      ) : null}
+
+      {showContextSidebar && contextSidebarOnLeft ? (
+        <aside className="hidden min-h-0 rounded-lg border lg:flex lg:flex-col" style={panelStyle}>
+          <div
+            className="border-b p-[var(--reader-panel-padding)]"
+            style={{ borderColor: 'var(--reader-border-color)' }}
+          >
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <BookOpenText className="h-4 w-4" />
+              阅读上下文
+            </div>
+          </div>
+          <ScrollArea className="h-[calc(100vh-180px)] p-[var(--reader-panel-padding)]">
+            {rightSidebarExtra ?? (
+              <p className="text-sm text-muted-foreground">
+                这里将用于渲染注释、翻译、AI 分析和其它扩展面板。
+              </p>
+            )}
+          </ScrollArea>
+        </aside>
+      ) : null}
 
       <main className="min-w-0 space-y-3">
-        <header className="flex flex-wrap items-center gap-2 rounded-lg border bg-card p-3">
+        <header
+          className="flex flex-wrap items-center gap-2 rounded-lg border p-[var(--reader-toolbar-padding)]"
+          style={panelStyle}
+        >
           <div className="min-w-0 flex-1">
             {subtitle ? <p className="text-xs uppercase tracking-wide text-muted-foreground">{subtitle}</p> : null}
             {title ? <h1 className="truncate text-lg font-semibold">{title}</h1> : null}
@@ -227,7 +284,8 @@ export function DocumentShell({
           <ReaderSettingsPanel
             preferences={mergedPreferences}
             capabilities={mergedPreferenceCapabilities}
-            onPreferencesChange={emitPreferencePatch}
+            onPreferencesChange={(patch) => onPreferencesChange?.(patch)}
+            onReset={onPreferencesReset}
           />
 
           {toolbarEnd}
@@ -235,9 +293,9 @@ export function DocumentShell({
 
         <div
           className={cn(
-            'relative rounded-lg border bg-card',
-            mergedPreferences.theme.mode === 'sepia' && 'bg-amber-50/70 dark:bg-amber-950/20',
+            'relative rounded-lg border',
           )}
+          style={panelStyle}
         >
           {content}
           {contentOverlay}
@@ -246,21 +304,82 @@ export function DocumentShell({
         {footerInfo ? <footer className="text-sm text-muted-foreground">{footerInfo}</footer> : null}
       </main>
 
-      <aside className="hidden min-h-0 rounded-lg border bg-card lg:flex lg:flex-col">
-        <div className="border-b p-3">
-          <div className="flex items-center gap-2 text-sm font-medium">
-            <BookOpenText className="h-4 w-4" />
-            阅读上下文
+      {showNavigationPanel && contextSidebarOnLeft ? (
+        <aside className="hidden min-h-0 rounded-lg border lg:flex lg:flex-col" style={panelStyle}>
+          <Tabs defaultValue={mergedCapabilities.toc ? 'toc' : 'search'} className="h-full gap-0">
+            <TabsList className="m-3 grid grid-cols-2" style={mutedPanelStyle}>
+              {mergedCapabilities.toc ? <TabsTrigger value="toc">目录</TabsTrigger> : null}
+              {mergedCapabilities.search ? <TabsTrigger value="search">搜索</TabsTrigger> : null}
+            </TabsList>
+
+            {mergedCapabilities.toc ? (
+              <TabsContent value="toc" className="min-h-0 flex-1">
+                <ScrollArea className="h-[calc(100vh-180px)] px-3 pb-3">
+                  <div className="space-y-1">{renderTocItems(toc, { activeTocId, onTocSelect })}</div>
+                </ScrollArea>
+              </TabsContent>
+            ) : null}
+
+            {mergedCapabilities.search ? (
+              <TabsContent value="search" className="min-h-0 flex-1 space-y-3 px-3 pb-3">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute top-2.5 left-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    value={searchQuery}
+                    onChange={(event) => onSearchQueryChange?.(event.target.value)}
+                    placeholder="搜索当前内容"
+                    className="pl-9"
+                  />
+                </div>
+
+                <ScrollArea className="h-[calc(100vh-220px)]">
+                  <div className="space-y-2 pr-3">
+                    {searchResults.map((result) => (
+                      <button
+                        key={result.id}
+                        onClick={() => onSearchResultSelect?.(result)}
+                        className="w-full rounded border p-2 text-left hover:bg-muted/70"
+                        style={mutedPanelStyle}
+                      >
+                        <p className="text-xs text-muted-foreground">{result.contextBefore}</p>
+                        <p className="text-sm">{result.text}</p>
+                        <p className="text-xs text-muted-foreground">{result.contextAfter}</p>
+                      </button>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </TabsContent>
+            ) : null}
+          </Tabs>
+
+          {leftSidebarExtra ? (
+            <div className="border-t p-[var(--reader-panel-padding)]" style={{ borderColor: 'var(--reader-border-color)' }}>
+              {leftSidebarExtra}
+            </div>
+          ) : null}
+        </aside>
+      ) : null}
+
+      {showContextSidebar && !contextSidebarOnLeft ? (
+        <aside className="hidden min-h-0 rounded-lg border lg:flex lg:flex-col" style={panelStyle}>
+          <div
+            className="border-b p-[var(--reader-panel-padding)]"
+            style={{ borderColor: 'var(--reader-border-color)' }}
+          >
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <BookOpenText className="h-4 w-4" />
+              阅读上下文
+            </div>
           </div>
-        </div>
-        <ScrollArea className="h-[calc(100vh-180px)] p-3">
-          {rightSidebarExtra ?? (
-            <p className="text-sm text-muted-foreground">
-              这里将用于渲染注释、翻译、AI 分析和其它扩展面板。
-            </p>
-          )}
-        </ScrollArea>
-      </aside>
+          <ScrollArea className="h-[calc(100vh-180px)] p-[var(--reader-panel-padding)]">
+            {rightSidebarExtra ?? (
+              <p className="text-sm text-muted-foreground">
+                这里将用于渲染注释、翻译、AI 分析和其它扩展面板。
+              </p>
+            )}
+          </ScrollArea>
+        </aside>
+      ) : null}
     </div>
   )
 }

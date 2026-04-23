@@ -2,6 +2,8 @@ import type { Locale } from 'date-fns'
 import type {
   ReaderDocumentIdentity,
   ReaderPersistenceEvents,
+  ReaderPreferencesChangeEvent,
+  ReaderPreferencesPatch,
   ReaderRuntimeProps,
 } from '@/components/reader-platform'
 
@@ -125,9 +127,13 @@ export interface YouTubeReaderData {
 export interface PodcastReaderProps extends ReaderChromeProps, ReaderRuntimeProps, ReaderPersistenceEvents {
   identity: ReaderDocumentIdentity
   data: PodcastReaderData
+  preferences?: ReaderPreferencesPatch
+  onPreferencesChange?: (event: ReaderPreferencesChangeEvent) => void
 }
 
 export interface YouTubeReaderProps extends ReaderChromeProps, ReaderRuntimeProps, ReaderPersistenceEvents {
   identity: ReaderDocumentIdentity
   data: YouTubeReaderData
+  preferences?: ReaderPreferencesPatch
+  onPreferencesChange?: (event: ReaderPreferencesChangeEvent) => void
 }

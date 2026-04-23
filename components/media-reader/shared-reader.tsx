@@ -1,8 +1,23 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+  type RefObject,
+} from 'react'
 import { FileText, Hash, Info, Lightbulb, List } from 'lucide-react'
 
+import { ReaderSettingsPanel } from '@/components/document-reader/shared'
+import {
+  getReaderPreferenceCssVariables,
+  type ReaderPreferenceCapabilities,
+  type ReaderPreferences,
+  type ReaderPreferencesPatch,
+} from '@/components/reader-platform'
 import { cn } from '../../lib/utils'
 import {
   findActiveChapterIndex,
@@ -36,6 +51,10 @@ interface SharedReaderProps {
   contentSurfaceRef?: RefObject<HTMLDivElement | null>
   overlay?: ReactNode
   sidebarExtra?: ReactNode
+  preferences?: ReaderPreferences
+  preferenceCapabilities?: ReaderPreferenceCapabilities
+  onPreferencesChange?: (patch: ReaderPreferencesPatch) => void
+  onPreferencesReset?: () => void
 }
 
 const toneClasses: Record<ReaderSectionTone, string> = {
@@ -59,8 +78,17 @@ function SidebarSection({ section }: { section: ReaderSidebarSection }) {
   const titleClassName = toneClasses[section.tone ?? 'default']
 
   return (
-    <div className="rounded border border-border bg-muted/30 p-2">
-      <h2 className={cn('mb-1 flex items-center gap-1 font-serif text-[10px] font-bold', titleClassName)}>
+    <div
+      className="rounded border p-2"
+      style={{
+        borderColor: 'var(--reader-border-color)',
+        backgroundColor: 'var(--reader-muted-background)',
+        color: 'var(--reader-surface-foreground)',
+      }}
+    >
+      <h2
+        className={cn('mb-1 flex items-center gap-1 font-serif text-[length:var(--reader-title-font-size)] font-bold', titleClassName)}
+      >
         <Icon className="h-3 w-3" />
         {section.title}
       </h2>
@@ -68,7 +96,7 @@ function SidebarSection({ section }: { section: ReaderSidebarSection }) {
       {section.type === 'text' ? (
         <p
           className={cn(
-            'text-[10px] leading-relaxed text-muted-foreground',
+            'text-[length:var(--reader-body-font-size)] leading-relaxed text-muted-foreground',
             section.multiline && 'whitespace-pre-line',
           )}
         >
@@ -82,7 +110,8 @@ function SidebarSection({ section }: { section: ReaderSidebarSection }) {
             {section.items.map((item) => (
               <span
                 key={item}
-                className="rounded-full border border-border bg-background px-1.5 py-0.5 text-[9px] text-muted-foreground"
+                className="rounded-full border bg-background px-1.5 py-0.5 text-[length:var(--reader-meta-font-size)] text-muted-foreground"
+                style={{ borderColor: 'var(--reader-border-color)' }}
               >
                 {item}
               </span>
@@ -91,7 +120,7 @@ function SidebarSection({ section }: { section: ReaderSidebarSection }) {
         ) : section.ordered ? (
           <ol className="space-y-1">
             {section.items.map((item, index) => (
-              <li key={item} className="flex gap-1.5 text-[10px] leading-relaxed">
+              <li key={item} className="flex gap-1.5 text-[length:var(--reader-body-font-size)] leading-relaxed">
                 <span className="flex h-3.5 w-3.5 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-[8px] font-bold text-primary">
                   {index + 1}
                 </span>
@@ -100,7 +129,7 @@ function SidebarSection({ section }: { section: ReaderSidebarSection }) {
             ))}
           </ol>
         ) : (
-          <ul className="space-y-1 text-[10px] leading-relaxed text-muted-foreground">
+          <ul className="space-y-1 text-[length:var(--reader-body-font-size)] leading-relaxed text-muted-foreground">
             {section.items.map((item) => (
               <li key={item}>{item}</li>
             ))}
@@ -109,7 +138,7 @@ function SidebarSection({ section }: { section: ReaderSidebarSection }) {
       ) : null}
 
       {section.type === 'facts' ? (
-        <dl className="space-y-1 text-[9px]">
+        <dl className="space-y-1 text-[length:var(--reader-meta-font-size)]">
           {section.items.map((item) => (
             <div key={item.label} className="flex justify-between gap-2">
               <dt className="text-muted-foreground">{item.label}</dt>
@@ -138,10 +167,37 @@ export function SharedReader({
   contentSurfaceRef,
   overlay,
   sidebarExtra,
+  preferences,
+  preferenceCapabilities,
+  onPreferencesChange,
+  onPreferencesReset,
 }: SharedReaderProps) {
   const [activeTab, setActiveTab] = useState<ReaderTab>(chapters.length > 0 ? 'chapters' : 'transcript')
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const activeItemRef = useRef<HTMLDivElement>(null)
+  const resolvedPreferences = preferences
+  const cssVars = useMemo(
+    () => (resolvedPreferences ? (getReaderPreferenceCssVariables(resolvedPreferences) as CSSProperties) : {}),
+    [resolvedPreferences],
+  )
+  const showSidebar = resolvedPreferences?.layout.sidebarVisible !== false
+  const sidebarOnLeft = showSidebar && resolvedPreferences?.layout.sidebarSide === 'left'
+  const scrollBehavior = resolvedPreferences?.behavior.reduceMotion ? 'auto' : 'smooth'
+  const panelStyle = {
+    backgroundColor: 'var(--reader-surface-background)',
+    color: 'var(--reader-surface-foreground)',
+    borderColor: 'var(--reader-border-color)',
+    boxShadow: 'var(--reader-surface-shadow)',
+  } satisfies CSSProperties
+  const readerTextStyle = {
+    fontFamily: 'var(--reader-font-family)',
+    lineHeight: 'var(--reader-line-height)',
+    letterSpacing: 'var(--reader-letter-spacing)',
+    textAlign:
+      resolvedPreferences?.typography.textAlign === 'justify'
+        ? 'justify'
+        : 'start',
+  } satisfies CSSProperties
 
   useEffect(() => {
     if (chapters.length === 0) {
@@ -158,9 +214,9 @@ export function SharedReader({
     const elementRect = element.getBoundingClientRect()
 
     if (elementRect.top < containerRect.top || elementRect.bottom > containerRect.bottom) {
-      element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      element.scrollIntoView({ behavior: scrollBehavior, block: 'center' })
     }
-  }, [activeTab, currentTime, isPlaying])
+  }, [activeTab, currentTime, isPlaying, scrollBehavior])
 
   const activeTranscriptIndex = useMemo(
     () => findActiveTranscriptIndex(currentTime, transcript),
@@ -173,43 +229,103 @@ export function SharedReader({
   )
 
   return (
-    <div ref={rootRef} className={cn('relative grid grid-cols-12 gap-3', className)}>
+    <div
+      ref={rootRef}
+      className={cn('relative grid grid-cols-12 gap-[var(--reader-grid-gap)]', className)}
+      style={{
+        ...cssVars,
+        backgroundColor: 'var(--reader-canvas-background)',
+        color: 'var(--reader-surface-foreground)',
+      }}
+    >
       {overlay}
-      <div className={cn('col-span-12 flex flex-col gap-2 lg:col-span-8', contentHeightClassName)}>
-        <div ref={contentSurfaceRef} className="flex min-h-0 flex-1 flex-col gap-2">
+      {resolvedPreferences && preferenceCapabilities && onPreferencesChange ? (
+        <div className="col-span-12 flex justify-end">
+          <ReaderSettingsPanel
+            preferences={resolvedPreferences}
+            capabilities={preferenceCapabilities}
+            onPreferencesChange={onPreferencesChange}
+            onReset={onPreferencesReset}
+          />
+        </div>
+      ) : null}
+
+      {showSidebar && sidebarOnLeft ? (
+        <div className="col-span-12 lg:col-span-4">
+          <div
+            className={cn('sticky space-y-2 overflow-y-auto rounded-lg border p-[var(--reader-panel-padding)]', sidebarStickyTopClassName, contentHeightClassName)}
+            style={panelStyle}
+          >
+            {sidebarSections.map((section) => (
+              <SidebarSection key={section.id} section={section} />
+            ))}
+            {sidebarExtra}
+          </div>
+        </div>
+      ) : null}
+
+      <div
+        className={cn(
+          'col-span-12 flex flex-col gap-2',
+          showSidebar ? 'lg:col-span-8' : 'lg:col-span-12',
+          contentHeightClassName,
+        )}
+      >
+        <div
+          ref={contentSurfaceRef}
+          className="flex min-h-0 flex-1 flex-col gap-2 rounded-lg border p-[var(--reader-panel-padding)]"
+          style={{ ...panelStyle, ...readerTextStyle }}
+        >
           {hero}
 
           <div className="flex min-h-0 flex-1 flex-col">
-            <div className="mb-1.5 flex flex-shrink-0 items-center gap-2 border-b border-border pb-1">
-            {chapters.length > 0 ? (
-              <button
-                onClick={() => setActiveTab('chapters')}
-                className={cn(
-                  'flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-medium transition-colors',
+            <div
+              className="mb-1.5 flex flex-shrink-0 items-center gap-2 border-b pb-1"
+              style={{ borderColor: 'var(--reader-border-color)' }}
+            >
+             {chapters.length > 0 ? (
+               <button
+                 onClick={() => setActiveTab('chapters')}
+                  className={cn(
+                  'flex items-center gap-1 rounded px-2 py-0.5 text-[length:var(--reader-meta-font-size)] font-medium transition-colors',
                   activeTab === 'chapters'
-                    ? 'bg-primary text-primary-foreground'
+                    ? 'text-white'
                     : 'text-muted-foreground hover:bg-muted',
                 )}
-              >
-                <List className="h-3 w-3" />
-                {messages.chapters} ({chapters.length})
+                style={
+                  activeTab === 'chapters'
+                    ? {
+                        backgroundColor: 'var(--reader-accent)',
+                      }
+                    : undefined
+                }
+               >
+                 <List className="h-3 w-3" />
+                 {messages.chapters} ({chapters.length})
               </button>
             ) : null}
 
             <button
               onClick={() => setActiveTab('transcript')}
               className={cn(
-                'flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-medium transition-colors',
+                'flex items-center gap-1 rounded px-2 py-0.5 text-[length:var(--reader-meta-font-size)] font-medium transition-colors',
                 activeTab === 'transcript'
-                  ? 'bg-primary text-primary-foreground'
+                  ? 'text-white'
                   : 'text-muted-foreground hover:bg-muted',
               )}
+              style={
+                activeTab === 'transcript'
+                  ? {
+                      backgroundColor: 'var(--reader-accent)',
+                    }
+                  : undefined
+              }
             >
               <FileText className="h-3 w-3" />
               {messages.transcript} ({transcript.length})
             </button>
 
-            <span className="ml-auto font-mono text-[9px] text-muted-foreground">
+            <span className="ml-auto font-mono text-[length:var(--reader-meta-font-size)] text-muted-foreground">
               {formatTime(currentTime)}
             </span>
             </div>
@@ -227,14 +343,33 @@ export function SharedReader({
                         onClick={() => onSeek(chapter.seconds * 1000)}
                         className={cn(
                           'cursor-pointer rounded px-2 py-1 transition-colors',
-                          isActive ? 'border-l-2 border-primary bg-primary/10' : 'hover:bg-muted',
+                          isActive ? 'border-l-2 hover:bg-transparent' : 'hover:bg-muted',
                         )}
+                        style={
+                          isActive
+                            ? {
+                                borderColor: 'var(--reader-accent)',
+                                backgroundColor: 'var(--reader-accent-soft)',
+                              }
+                            : undefined
+                        }
                       >
                         <div className="flex items-start gap-2">
-                          <span className={cn('font-mono text-[9px]', isActive ? 'font-medium text-primary' : 'text-muted-foreground')}>
+                          <span
+                            className={cn(
+                              'font-mono text-[length:var(--reader-meta-font-size)]',
+                              isActive ? 'font-medium' : 'text-muted-foreground',
+                            )}
+                            style={isActive ? { color: 'var(--reader-accent)' } : undefined}
+                          >
                             {chapter.time}
                           </span>
-                          <span className={cn('flex-1 text-[10px] leading-snug', isActive ? 'font-medium text-foreground' : 'text-muted-foreground')}>
+                          <span
+                            className={cn(
+                              'flex-1 text-[length:var(--reader-body-font-size)] leading-snug',
+                              isActive ? 'font-medium text-foreground' : 'text-muted-foreground',
+                            )}
+                          >
                             {chapter.title}
                           </span>
                         </div>
@@ -253,15 +388,34 @@ export function SharedReader({
                         ref={isActive ? activeItemRef : null}
                         onClick={() => onSeek(segment.startMs)}
                         className={cn(
-                          'cursor-pointer rounded px-1.5 py-1 text-[11px] transition-colors',
-                          isActive ? 'bg-primary/10 text-foreground' : 'text-muted-foreground hover:bg-muted',
+                          'cursor-pointer rounded px-1.5 py-1 text-[length:var(--reader-body-font-size)] transition-colors',
+                          isActive ? 'text-foreground' : 'text-muted-foreground hover:bg-muted',
                         )}
+                        style={
+                          isActive
+                            ? {
+                                backgroundColor: 'var(--reader-accent-soft)',
+                              }
+                            : undefined
+                        }
                       >
-                        <span className={cn('mr-1.5 font-mono text-[9px]', isActive ? 'text-primary' : 'text-muted-foreground/60')}>
+                        <span
+                          className={cn(
+                            'mr-1.5 font-mono text-[length:var(--reader-meta-font-size)]',
+                            isActive ? '' : 'text-muted-foreground/60',
+                          )}
+                          style={isActive ? { color: 'var(--reader-accent)' } : undefined}
+                        >
                           {formatTime(segment.startMs)}
                         </span>
                         {segment.speaker ? (
-                          <span className={cn('mr-1 text-[10px]', isActive ? 'font-medium text-primary' : 'text-muted-foreground/80')}>
+                          <span
+                            className={cn(
+                              'mr-1 text-[length:var(--reader-title-font-size)]',
+                              isActive ? 'font-medium' : 'text-muted-foreground/80',
+                            )}
+                            style={isActive ? { color: 'var(--reader-accent)' } : undefined}
+                          >
                             [{segment.speaker}]
                           </span>
                         ) : null}
@@ -271,7 +425,7 @@ export function SharedReader({
                   })}
                 </div>
               ) : (
-                <div className="flex h-32 items-center justify-center text-[11px] text-muted-foreground">
+                <div className="flex h-32 items-center justify-center text-[length:var(--reader-body-font-size)] text-muted-foreground">
                   {activeTab === 'chapters' ? messages.noChapters : messages.noTranscript}
                 </div>
               )}
@@ -280,14 +434,19 @@ export function SharedReader({
         </div>
       </div>
 
-      <div className="col-span-12 lg:col-span-4">
-        <div className={cn('sticky space-y-2 overflow-y-auto', sidebarStickyTopClassName, contentHeightClassName)}>
-          {sidebarSections.map((section) => (
-            <SidebarSection key={section.id} section={section} />
-          ))}
-          {sidebarExtra}
+      {showSidebar && !sidebarOnLeft ? (
+        <div className="col-span-12 lg:col-span-4">
+          <div
+            className={cn('sticky space-y-2 overflow-y-auto rounded-lg border p-[var(--reader-panel-padding)]', sidebarStickyTopClassName, contentHeightClassName)}
+            style={panelStyle}
+          >
+            {sidebarSections.map((section) => (
+              <SidebarSection key={section.id} section={section} />
+            ))}
+            {sidebarExtra}
+          </div>
         </div>
-      </div>
+      ) : null}
     </div>
   )
 }

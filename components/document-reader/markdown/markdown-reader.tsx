@@ -22,13 +22,15 @@ import type {
 import {
   defaultReaderCapabilities,
   defaultReaderPreferenceCapabilities,
-  defaultReaderPreferences,
+  clearStoredReaderLocator,
   getScopedSelection,
+  readStoredReaderLocator,
   ReaderSelectionOverlayHost,
   ReaderWorkspacePanel,
   renderReaderQuoteHighlights,
-  resolveReaderPreferences,
+  useManagedReaderPreferences,
   useReaderRuntime,
+  writeStoredReaderLocator,
 } from '@/components/reader-platform'
 import { cn } from '@/lib/utils'
 
@@ -44,6 +46,7 @@ export interface MarkdownReaderProps extends ReaderPersistenceEvents, ReaderRunt
   toc?: boolean
   search?: boolean
   allowRawHtml?: boolean
+  initialAnchor?: string
   preferences?: ReaderPreferencesPatch
   onPreferencesChange?: (event: ReaderPreferencesChangeEvent) => void
 }
@@ -92,6 +95,7 @@ export function MarkdownReader({
   toc = true,
   search = true,
   allowRawHtml = false,
+  initialAnchor,
   preferences,
   onPreferencesChange,
   onProgressChange,
@@ -105,12 +109,19 @@ export function MarkdownReader({
   onAnalysisContextChange,
 }: MarkdownReaderProps) {
   const contentRef = useRef<HTMLDivElement>(null)
+  const restoredAnchorAppliedRef = useRef(false)
   const workspacePanelId = useId().replace(/:/g, '')
 
   const [markdown, setMarkdown] = useState('markdown' in source ? source.markdown : '')
   const [searchQuery, setSearchQuery] = useState('')
   const [activeAnchor, setActiveAnchor] = useState<string>('document-start')
+  const [restoredAnchor, setRestoredAnchor] = useState<string | null>(initialAnchor ?? null)
   const [selection, setSelection] = useState<ReaderSelection | null>(null)
+  const managedPreferences = useManagedReaderPreferences({
+    identity,
+    basePreferences: preferences,
+    onPreferencesChange,
+  })
 
   useEffect(() => {
     if ('markdown' in source) {
@@ -152,10 +163,8 @@ export function MarkdownReader({
     }),
     [search, toc],
   )
-  const resolvedPreferences = useMemo(
-    () => resolveReaderPreferences({ systemDefaults: defaultReaderPreferences }, preferences),
-    [preferences],
-  )
+  const resolvedPreferences = managedPreferences.preferences
+  const scrollBehavior = resolvedPreferences.behavior.reduceMotion ? 'auto' : 'smooth'
   const selectedAnchor = selection?.range.start.kind === 'anchor' ? selection.range.start.anchor : null
   const activeSectionAnchor = selectedAnchor ?? activeAnchor
   const activeSectionIndex = useMemo(
@@ -195,6 +204,36 @@ export function MarkdownReader({
     onAnnotationChange,
     onAnalysisContextChange,
   })
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    restoredAnchorAppliedRef.current = false
+
+    if (resolvedPreferences.behavior.rememberLastLocation === false) {
+      clearStoredReaderLocator(window.localStorage, identity)
+      setRestoredAnchor(initialAnchor ?? null)
+      return
+    }
+
+    const locator = readStoredReaderLocator(window.localStorage, identity)
+    setRestoredAnchor(locator?.kind === 'anchor' ? locator.anchor : (initialAnchor ?? null))
+  }, [
+    identity,
+    initialAnchor,
+    resolvedPreferences.behavior.rememberLastLocation,
+  ])
+
+  useEffect(() => {
+    if (!contentRef.current || !restoredAnchor || restoredAnchorAppliedRef.current) return
+
+    const element = contentRef.current.querySelector<HTMLElement>(`#${CSS.escape(restoredAnchor)}`)
+    if (!element) return
+
+    element.scrollIntoView({ behavior: scrollBehavior, block: 'start' })
+    setActiveAnchor(restoredAnchor)
+    restoredAnchorAppliedRef.current = true
+  }, [markdown, restoredAnchor, scrollBehavior])
 
   useEffect(() => {
     if (!contentRef.current) return
@@ -288,6 +327,18 @@ export function MarkdownReader({
 
     runtime.updateSessionSnapshot(snapshot)
     onSessionSnapshotChange?.(snapshot)
+
+    if (typeof window === 'undefined') return
+
+    if (
+      resolvedPreferences.behavior.autoSaveProgress !== false &&
+      resolvedPreferences.behavior.rememberLastLocation !== false
+    ) {
+      writeStoredReaderLocator(window.localStorage, identity, locator)
+      return
+    }
+
+    clearStoredReaderLocator(window.localStorage, identity)
   }, [
     activeAnchor,
     identity,
@@ -296,6 +347,8 @@ export function MarkdownReader({
     parsed.headingIds,
     runtime.annotations.length,
     runtime.updateSessionSnapshot,
+    resolvedPreferences.behavior.autoSaveProgress,
+    resolvedPreferences.behavior.rememberLastLocation,
     selection,
     visibleSections,
   ])
@@ -305,7 +358,7 @@ export function MarkdownReader({
     if (!anchor) return
 
     const element = document.getElementById(anchor)
-    element?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    element?.scrollIntoView({ behavior: scrollBehavior, block: 'start' })
     setActiveAnchor(anchor)
   }
 
@@ -321,8 +374,9 @@ export function MarkdownReader({
           scrollMode: false,
         },
       }}
-      preferences={preferences}
-      onPreferencesChange={onPreferencesChange}
+      preferences={managedPreferences.preferencePatch}
+      onPreferencesChange={managedPreferences.updatePreferences}
+      onPreferencesReset={managedPreferences.resetPreferences}
       toc={parsed.toc}
       activeTocId={activeSectionAnchor}
       onTocSelect={jumpToAnchor}
@@ -359,6 +413,10 @@ export function MarkdownReader({
             '[&_h1]:mb-4 [&_h1]:text-3xl [&_h1]:font-bold [&_h2]:mb-3 [&_h2]:mt-8 [&_h2]:text-2xl [&_h2]:font-semibold',
             '[&_h3]:mb-3 [&_h3]:mt-6 [&_h3]:text-xl [&_h3]:font-semibold [&_ul]:mb-4 [&_ul]:list-disc [&_ul]:pl-6',
           )}
+          style={{
+            fontFamily: 'var(--reader-font-family)',
+            textAlign: resolvedPreferences.typography.textAlign === 'justify' ? 'justify' : 'start',
+          }}
         >
           <ReactMarkdown
             remarkPlugins={[remarkGfm, remarkHeadingIdPlugin]}
@@ -372,6 +430,7 @@ export function MarkdownReader({
                     className={cn('text-primary underline underline-offset-4', props.className)}
                     target="_blank"
                     rel="noreferrer"
+                    style={{ color: 'var(--reader-accent)' }}
                   />
                 )
               },
@@ -409,12 +468,12 @@ export function MarkdownReader({
             }
           }}
           onSelectAnnotation={(annotation) => {
-            runtime.selectAnnotation(annotation.id)
-            if (annotation.range.start.kind === 'anchor') {
-              const element = document.getElementById(annotation.range.start.anchor)
-              element?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-            }
-          }}
+              runtime.selectAnnotation(annotation.id)
+              if (annotation.range.start.kind === 'anchor') {
+                const element = document.getElementById(annotation.range.start.anchor)
+                element?.scrollIntoView({ behavior: scrollBehavior, block: 'start' })
+              }
+            }}
           onUpdateAnnotationBody={runtime.updateAnnotationBody}
           onDeleteAnnotation={runtime.deleteAnnotation}
         />

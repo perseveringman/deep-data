@@ -17,14 +17,16 @@ import type {
 import {
   defaultReaderCapabilities,
   defaultReaderPreferenceCapabilities,
-  defaultReaderPreferences,
+  clearStoredReaderLocator,
   getReaderPreferenceCssVariables,
   getRangeAnchorRect,
   offsetSelectionAnchorRect,
+  readStoredReaderLocator,
   ReaderSelectionOverlayHost,
   ReaderWorkspacePanel,
-  resolveReaderPreferences,
+  useManagedReaderPreferences,
   useReaderRuntime,
+  writeStoredReaderLocator,
 } from '@/components/reader-platform'
 
 type EpubReaderSource =
@@ -68,13 +70,17 @@ export function EpubReader({
 
   const [toc, setToc] = useState<ReaderTocItem[]>([])
   const [location, setLocation] = useState<string>(initialLocation ?? '')
+  const [restoredLocation, setRestoredLocation] = useState<string | null>(null)
   const [bookTitle, setBookTitle] = useState<string | undefined>(identity.title)
   const [selection, setSelection] = useState<ReaderSelection | null>(null)
   const [visibleText, setVisibleText] = useState('')
-  const resolvedPreferences = useMemo(
-    () => resolveReaderPreferences({ systemDefaults: defaultReaderPreferences }, preferences),
-    [preferences],
-  )
+  const managedPreferences = useManagedReaderPreferences({
+    identity,
+    basePreferences: preferences,
+    onPreferencesChange,
+  })
+  const resolvedPreferences = managedPreferences.preferences
+  const effectiveMode = resolvedPreferences.behavior.scrollMode === 'scrolled' ? 'scrolled' : mode
   const capabilities = useMemo(
     () => ({
       ...defaultReaderCapabilities,
@@ -122,13 +128,21 @@ export function EpubReader({
   })
 
   const cssVars = useMemo(() => {
-    return getReaderPreferenceCssVariables({
-      theme: { mode: 'system', accentColor: 'hsl(var(--primary))', surfaceStyle: 'paper', contrast: 'normal', ...(preferences?.theme ?? {}) },
-      typography: { fontFamily: 'var(--font-sans, ui-sans-serif)', fontSize: 16, lineHeight: 1.7, letterSpacing: 0, paragraphSpacing: 1, contentWidth: 'medium', textAlign: 'start', ...(preferences?.typography ?? {}) },
-      layout: { tocVisible: true, sidebarVisible: true, sidebarSide: 'left', pageGap: 16, density: 'comfortable', ...(preferences?.layout ?? {}) },
-      behavior: { scrollMode: mode, autoSaveProgress: true, reduceMotion: false, selectionMenu: true, rememberLastLocation: true, ...(preferences?.behavior ?? {}) },
-    })
-  }, [mode, preferences])
+    return getReaderPreferenceCssVariables(resolvedPreferences)
+  }, [resolvedPreferences])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    if (resolvedPreferences.behavior.rememberLastLocation === false) {
+      clearStoredReaderLocator(window.localStorage, identity)
+      setRestoredLocation(null)
+      return
+    }
+
+    const locator = readStoredReaderLocator(window.localStorage, identity)
+    setRestoredLocation(locator?.kind === 'cfi' ? locator.cfi : null)
+  }, [identity, resolvedPreferences.behavior.rememberLastLocation])
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -153,8 +167,8 @@ export function EpubReader({
       const rendition = book.renderTo(containerRef.current!, {
         width: '100%',
         height: '100%',
-        manager: mode === 'scrolled' ? 'continuous' : 'default',
-        flow: mode === 'scrolled' ? 'scrolled' : 'paginated',
+        manager: effectiveMode === 'scrolled' ? 'continuous' : 'default',
+        flow: effectiveMode === 'scrolled' ? 'scrolled' : 'paginated',
         allowScriptedContent: false,
       })
       renditionRef.current = rendition
@@ -227,23 +241,7 @@ export function EpubReader({
         })),
       )
 
-      rendition.themes.default({
-        body: {
-          color: 'var(--foreground)',
-          background: 'transparent',
-          'font-size': `${preferences?.typography?.fontSize ?? 16}px`,
-          'line-height': `${preferences?.typography?.lineHeight ?? 1.7}`,
-          'font-family': preferences?.typography?.fontFamily ?? 'serif',
-          'letter-spacing': `${preferences?.typography?.letterSpacing ?? 0}px`,
-          'text-align': preferences?.typography?.textAlign ?? 'start',
-        },
-        p: {
-          'margin-bottom': `${preferences?.typography?.paragraphSpacing ?? 1}rem`,
-        },
-      })
-      rendition.themes.select('default')
-
-      await rendition.display(initialLocation || undefined)
+      await rendition.display(restoredLocation || initialLocation || undefined)
     }
 
     void mount()
@@ -261,12 +259,46 @@ export function EpubReader({
   }, [
     identity,
     initialLocation,
-    mode,
+    effectiveMode,
     onLocationChange,
     onProgressChange,
-    preferences,
+    restoredLocation,
     source,
   ])
+
+  useEffect(() => {
+    const rendition = renditionRef.current
+    if (!rendition?.themes) return
+
+    rendition.themes.default({
+      body: {
+        color:
+          resolvedPreferences.theme.mode === 'dark'
+            ? '#f1f5f9'
+            : resolvedPreferences.theme.mode === 'sepia'
+              ? '#4b3621'
+              : '#111827',
+        background:
+          resolvedPreferences.theme.mode === 'dark'
+            ? '#111827'
+            : resolvedPreferences.theme.mode === 'sepia'
+              ? '#f4ecd8'
+              : '#ffffff',
+        'font-size': `${resolvedPreferences.typography.fontSize ?? 16}px`,
+        'line-height': `${resolvedPreferences.typography.lineHeight ?? 1.7}`,
+        'font-family': resolvedPreferences.typography.fontFamily ?? 'serif',
+        'letter-spacing': `${resolvedPreferences.typography.letterSpacing ?? 0}px`,
+        'text-align': resolvedPreferences.typography.textAlign ?? 'start',
+      },
+      p: {
+        'margin-bottom': `${resolvedPreferences.typography.paragraphSpacing ?? 1}rem`,
+      },
+      a: {
+        color: resolvedPreferences.theme.accentColor ?? '#111827',
+      },
+    })
+    rendition.themes.select('default')
+  }, [resolvedPreferences])
 
   useEffect(() => {
     const snapshot = {
@@ -279,11 +311,28 @@ export function EpubReader({
 
     onSessionSnapshotChange?.(snapshot)
     runtime.updateSessionSnapshot(snapshot)
+
+    if (typeof window === 'undefined' || !location) return
+
+    if (
+      resolvedPreferences.behavior.autoSaveProgress !== false &&
+      resolvedPreferences.behavior.rememberLastLocation !== false
+    ) {
+      writeStoredReaderLocator(window.localStorage, identity, {
+        kind: 'cfi',
+        cfi: location,
+      })
+      return
+    }
+
+    clearStoredReaderLocator(window.localStorage, identity)
   }, [
     identity,
     initialLocation,
     location,
     onSessionSnapshotChange,
+    resolvedPreferences.behavior.autoSaveProgress,
+    resolvedPreferences.behavior.rememberLastLocation,
     runtime.annotations.length,
     runtime.updateSessionSnapshot,
     selection,
@@ -317,8 +366,9 @@ export function EpubReader({
       subtitle="EPUB Reader"
       capabilities={capabilities}
       preferenceCapabilities={defaultReaderPreferenceCapabilities}
-      preferences={preferences}
-      onPreferencesChange={onPreferencesChange}
+      preferences={managedPreferences.preferencePatch}
+      onPreferencesChange={managedPreferences.updatePreferences}
+      onPreferencesReset={managedPreferences.resetPreferences}
       toc={toc}
       activeTocId={location}
       onTocSelect={(item) => {
