@@ -7,16 +7,21 @@ import { DocumentShell } from '@/components/document-reader/shared'
 import type {
   ReaderDocumentIdentity,
   ReaderPersistenceEvents,
-  ReaderPreferences,
   ReaderPreferencesPatch,
   ReaderPreferencesChangeEvent,
+  ReaderRuntimeProps,
+  ReaderSelection,
   ReaderSessionSnapshot,
   ReaderTocItem,
 } from '@/components/reader-platform'
 import {
   defaultReaderCapabilities,
   defaultReaderPreferenceCapabilities,
+  defaultReaderPreferences,
   getReaderPreferenceCssVariables,
+  ReaderWorkspacePanel,
+  resolveReaderPreferences,
+  useReaderRuntime,
 } from '@/components/reader-platform'
 
 type EpubReaderSource =
@@ -24,7 +29,7 @@ type EpubReaderSource =
   | { file: File }
   | { arrayBuffer: ArrayBuffer }
 
-export interface EpubReaderProps extends ReaderPersistenceEvents {
+export interface EpubReaderProps extends ReaderPersistenceEvents, ReaderRuntimeProps {
   identity: ReaderDocumentIdentity
   source: EpubReaderSource
   initialLocation?: string
@@ -44,16 +49,73 @@ export function EpubReader({
   onLocationChange,
   onProgressChange,
   onSessionSnapshotChange,
+  translationExecutor,
+  defaultProvider,
+  defaultTargetLang,
+  translationDisplayMode,
+  initialAnnotations,
+  onAnnotationChange,
+  onAnalysisContextChange,
 }: EpubReaderProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const renditionRef = useRef<any>(null)
   const objectUrlRef = useRef<string | null>(null)
-  const selectionTextRef = useRef('')
+  const renderedAnnotationCfisRef = useRef<string[]>([])
 
   const [toc, setToc] = useState<ReaderTocItem[]>([])
   const [location, setLocation] = useState<string>(initialLocation ?? '')
   const [bookTitle, setBookTitle] = useState<string | undefined>(identity.title)
-  const [selectionText, setSelectionText] = useState<string>('')
+  const [selection, setSelection] = useState<ReaderSelection | null>(null)
+  const [visibleText, setVisibleText] = useState('')
+  const resolvedPreferences = useMemo(
+    () => resolveReaderPreferences({ systemDefaults: defaultReaderPreferences }, preferences),
+    [preferences],
+  )
+  const capabilities = useMemo(
+    () => ({
+      ...defaultReaderCapabilities,
+      textSelection: true,
+      translation: true,
+      annotations: true,
+      aiContext: true,
+      toc: toc.length > 0,
+      search: false,
+      paginatedNavigation: true,
+      continuousScroll: true,
+      extractVisibleText: true,
+    }),
+    [toc.length],
+  )
+  const activeUnit = useMemo(
+    () => ({
+      id: location || 'epub-current',
+      title: '当前位置',
+      text: visibleText,
+      locator: { kind: 'cfi' as const, cfi: location || initialLocation || '' },
+    }),
+    [initialLocation, location, visibleText],
+  )
+  const visibleContent = useMemo(
+    () =>
+      visibleText
+        ? [{ id: location || 'epub-visible', text: visibleText, locator: { kind: 'cfi' as const, cfi: location || initialLocation || '' } }]
+        : [],
+    [initialLocation, location, visibleText],
+  )
+  const runtime = useReaderRuntime({
+    document: identity,
+    capabilities,
+    preferences: resolvedPreferences,
+    activeUnit,
+    visibleContent,
+    translationExecutor,
+    defaultProvider,
+    defaultTargetLang,
+    translationDisplayMode,
+    initialAnnotations,
+    onAnnotationChange,
+    onAnalysisContextChange,
+  })
 
   const cssVars = useMemo(() => {
     return getReaderPreferenceCssVariables({
@@ -63,10 +125,6 @@ export function EpubReader({
       behavior: { scrollMode: mode, autoSaveProgress: true, reduceMotion: false, selectionMenu: true, rememberLastLocation: true, ...(preferences?.behavior ?? {}) },
     })
   }, [mode, preferences])
-
-  useEffect(() => {
-    selectionTextRef.current = selectionText
-  }, [selectionText])
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -100,30 +158,33 @@ export function EpubReader({
       rendition.on('relocated', (event: any) => {
         if (cancelled) return
         const cfi = event?.start?.cfi ?? ''
+        const contents = rendition.getContents?.() ?? []
+        const nextVisibleText = contents
+          .map((content: any) => content?.document?.body?.innerText ?? '')
+          .filter(Boolean)
+          .join('\n\n')
+          .trim()
+
         setLocation(cfi)
+        setVisibleText(nextVisibleText)
         onLocationChange?.(cfi)
         onProgressChange?.({
           documentId: identity.documentId,
           locator: { kind: 'cfi', cfi },
           lastReadAt: new Date().toISOString(),
         })
-        onSessionSnapshotChange?.({
-          document: identity,
-          location: { kind: 'cfi', cfi },
-          selection: selectionTextRef.current
-            ? {
-                text: selectionTextRef.current,
-                range: { start: { kind: 'cfi', cfi }, quote: { exact: selectionTextRef.current } },
-              }
-            : undefined,
-        } satisfies ReaderSessionSnapshot)
       })
 
       rendition.on('selected', (cfiRange: string, contents: any) => {
         const text = contents?.window?.getSelection?.()?.toString?.() ?? ''
-        setSelectionText(text)
-        contents.window.getSelection()?.removeAllRanges?.()
-        rendition.annotations.add('highlight', cfiRange, {}, undefined, 'reader-selection-highlight')
+        setSelection(
+          text
+            ? {
+                text,
+                range: { start: { kind: 'cfi', cfi: cfiRange }, quote: { exact: text } },
+              }
+            : null,
+        )
       })
 
       await book.ready
@@ -176,24 +237,64 @@ export function EpubReader({
         objectUrlRef.current = null
       }
     }
-  }, [identity, initialLocation, mode, onLocationChange, onProgressChange, onSessionSnapshotChange, preferences, source])
+  }, [
+    identity,
+    initialLocation,
+    mode,
+    onLocationChange,
+    onProgressChange,
+    preferences,
+    source,
+  ])
+
+  useEffect(() => {
+    const snapshot = {
+      document: identity,
+      location: { kind: 'cfi' as const, cfi: location || initialLocation || '' },
+      selection: selection ?? undefined,
+      visibleContent,
+      annotationsCount: runtime.annotations.length,
+    } satisfies ReaderSessionSnapshot
+
+    onSessionSnapshotChange?.(snapshot)
+    runtime.updateSessionSnapshot(snapshot)
+  }, [
+    identity,
+    initialLocation,
+    location,
+    onSessionSnapshotChange,
+    runtime.annotations.length,
+    runtime.updateSessionSnapshot,
+    selection,
+    visibleContent,
+  ])
+
+  useEffect(() => {
+    const rendition = renditionRef.current
+    if (!rendition?.annotations) return
+
+    renderedAnnotationCfisRef.current.forEach((cfi) => {
+      rendition.annotations.remove?.(cfi, 'highlight')
+    })
+
+    const nextRendered = runtime.annotations
+      .map((annotation) =>
+        annotation.range.start.kind === 'cfi' ? annotation.range.start.cfi : null,
+      )
+      .filter((cfi): cfi is string => Boolean(cfi))
+
+    nextRendered.forEach((cfi) => {
+      rendition.annotations.add('highlight', cfi, {}, undefined, 'reader-selection-highlight')
+    })
+
+    renderedAnnotationCfisRef.current = nextRendered
+  }, [runtime.annotations])
 
   return (
     <DocumentShell
       title={bookTitle}
       subtitle="EPUB Reader"
-      capabilities={{
-        ...defaultReaderCapabilities,
-        textSelection: true,
-        translation: true,
-        annotations: true,
-        aiContext: true,
-        toc: toc.length > 0,
-        search: false,
-        paginatedNavigation: true,
-        continuousScroll: true,
-        extractVisibleText: true,
-      }}
+      capabilities={capabilities}
       preferenceCapabilities={defaultReaderPreferenceCapabilities}
       preferences={preferences}
       onPreferencesChange={onPreferencesChange}
@@ -213,18 +314,40 @@ export function EpubReader({
         </div>
       }
       rightSidebarExtra={
-        <div className="space-y-3">
-          <div className="rounded border p-3">
-            <p className="mb-2 text-xs font-medium text-muted-foreground">当前定位</p>
-            <p className="break-all text-sm">{location || '尚未定位'}</p>
-          </div>
-          {selectionText ? (
-            <div className="rounded border p-3">
-              <p className="mb-2 text-xs font-medium text-muted-foreground">最近选中文本</p>
-              <p className="text-sm">{selectionText}</p>
-            </div>
-          ) : null}
-        </div>
+        <ReaderWorkspacePanel
+          capabilities={capabilities}
+          selection={selection}
+          activeUnit={activeUnit}
+          annotations={runtime.annotations}
+          activeAnnotationId={runtime.activeAnnotationId}
+          provider={runtime.translation.provider}
+          targetLang={runtime.translation.targetLang}
+          canTranslate={runtime.translation.canTranslate}
+          isTranslating={runtime.translation.isTranslating}
+          translationResponse={runtime.translation.lastResponse}
+          translationError={runtime.translation.error}
+          analysisContext={runtime.analysisContext}
+          onProviderChange={runtime.translation.setProvider}
+          onTargetLangChange={runtime.translation.setTargetLang}
+          onTranslate={(scope) => {
+            void runtime.translation.requestTranslation(scope)
+          }}
+          onCreateAnnotation={(color) => {
+            try {
+              runtime.createAnnotationFromSelection(color)
+            } catch {
+              // no-op: button is only shown when selection exists
+            }
+          }}
+          onSelectAnnotation={(annotation) => {
+            runtime.selectAnnotation(annotation.id)
+            if (annotation.range.start.kind === 'cfi') {
+              void renditionRef.current?.display(annotation.range.start.cfi)
+            }
+          }}
+          onUpdateAnnotationBody={runtime.updateAnnotationBody}
+          onDeleteAnnotation={runtime.deleteAnnotation}
+        />
       }
     />
   )

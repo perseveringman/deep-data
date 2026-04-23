@@ -1,13 +1,16 @@
+'use client'
+
 import { PodcastReader as MediaPodcastReader, type PodcastReaderData } from '@/components/media-reader'
+import type { ReaderRuntimeProps } from '@/components/reader-platform'
 import { parsePodcastContent } from '@/lib/content-parser'
 import type { ContentItem } from '@/lib/mock-data'
 
-interface PodcastReaderProps {
+interface PodcastReaderProps extends ReaderRuntimeProps {
   content: ContentItem
   markdownContent: string
 }
 
-export function PodcastReader({ content, markdownContent }: PodcastReaderProps) {
+export function PodcastReader({ content, markdownContent, ...runtimeProps }: PodcastReaderProps) {
   const parsedContent = parsePodcastContent(markdownContent)
 
   const data: PodcastReaderData = {
@@ -29,5 +32,17 @@ export function PodcastReader({ content, markdownContent }: PodcastReaderProps) 
     transcript: parsedContent.transcript,
   }
 
-  return <MediaPodcastReader data={data} />
+  return (
+    <MediaPodcastReader
+      identity={{
+        readerType: 'podcast',
+        documentId: content.id,
+        sourceUrl: content.audioUrl,
+        title: data.title,
+        language: content.language,
+      }}
+      data={data}
+      {...runtimeProps}
+    />
+  )
 }

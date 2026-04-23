@@ -67,6 +67,42 @@ function mergePreferenceCapabilities(
   }
 }
 
+function renderTocItems(
+  items: ReaderTocItem[],
+  {
+    activeTocId,
+    onTocSelect,
+    depth = 0,
+  }: {
+    activeTocId?: string
+    onTocSelect?: (item: ReaderTocItem) => void
+    depth?: number
+  },
+): ReactNode {
+  return items.map((item) => (
+    <div key={item.id} className="space-y-1">
+      <button
+        onClick={() => onTocSelect?.(item)}
+        className={cn(
+          'flex w-full items-start rounded px-2 py-1 text-left text-sm transition-colors hover:bg-muted',
+          activeTocId === item.id && 'bg-muted font-medium text-foreground',
+        )}
+        style={{ paddingLeft: `${depth * 12 + 8}px` }}
+      >
+        {item.title}
+      </button>
+
+      {item.children?.length
+        ? renderTocItems(item.children, {
+            activeTocId,
+            onTocSelect,
+            depth: depth + 1,
+          })
+        : null}
+    </div>
+  ))
+}
+
 export function DocumentShell({
   title,
   subtitle,
@@ -126,20 +162,7 @@ export function DocumentShell({
           {mergedCapabilities.toc ? (
             <TabsContent value="toc" className="min-h-0 flex-1">
               <ScrollArea className="h-[calc(100vh-180px)] px-3 pb-3">
-                <div className="space-y-1">
-                  {toc.map((item) => (
-                    <button
-                      key={item.id}
-                      onClick={() => onTocSelect?.(item)}
-                      className={cn(
-                        'flex w-full items-start rounded px-2 py-1 text-left text-sm transition-colors hover:bg-muted',
-                        activeTocId === item.id && 'bg-muted font-medium text-foreground',
-                      )}
-                    >
-                      {item.title}
-                    </button>
-                  ))}
-                </div>
+                <div className="space-y-1">{renderTocItems(toc, { activeTocId, onTocSelect })}</div>
               </ScrollArea>
             </TabsContent>
           ) : null}

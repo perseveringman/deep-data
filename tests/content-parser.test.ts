@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
@@ -12,6 +13,16 @@ function moduleUrl(relativePath: string): string {
 async function importContentParser() {
   return import(moduleUrl('lib/content-parser.ts'))
 }
+
+test('content-parser stays shared between server and client code', async () => {
+  const source = await readFile(path.join(process.cwd(), 'lib/content-parser.ts'), 'utf8')
+
+  assert.equal(
+    /^\s*["']use client["']/.test(source),
+    false,
+    'lib/content-parser.ts must remain server-importable for app routes'
+  )
+})
 
 test('parseYouTubeContent extracts chapters from common timestamp lines in Description', async () => {
   const { parseYouTubeContent } = await importContentParser()

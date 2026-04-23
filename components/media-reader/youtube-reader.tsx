@@ -5,7 +5,24 @@ import { format } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
 import { Calendar, Clock, ExternalLink, Eye, ThumbsUp } from 'lucide-react'
 
-import { formatCount, formatTime, getYouTubeVideoId, resolveReaderMessages } from './helpers'
+import {
+  defaultReaderCapabilities,
+  defaultReaderPreferences,
+  getScopedSelection,
+  type ReaderSelection,
+  ReaderWorkspacePanel,
+  renderReaderQuoteHighlights,
+  resolveReaderPreferences,
+  useReaderRuntime,
+} from '@/components/reader-platform'
+import {
+  findActiveChapterIndex,
+  findActiveTranscriptIndex,
+  formatCount,
+  formatTime,
+  getYouTubeVideoId,
+  resolveReaderMessages,
+} from './helpers'
 import { SharedReader } from './shared-reader'
 import type { ReaderSidebarSection, YouTubeReaderProps } from './types'
 
@@ -42,6 +59,7 @@ function loadYouTubeIframeApi(): Promise<typeof window.YT> {
 }
 
 export function YouTubeReader({
+  identity,
   data,
   className,
   contentHeightClassName,
@@ -49,16 +67,37 @@ export function YouTubeReader({
   dateLocale = zhCN,
   dateFormat = 'yyyy/M/d',
   messages,
+  onProgressChange,
+  onSessionSnapshotChange,
+  translationExecutor,
+  defaultProvider,
+  defaultTargetLang,
+  translationDisplayMode,
+  initialAnnotations,
+  onAnnotationChange,
+  onAnalysisContextChange,
 }: YouTubeReaderProps) {
-  const mergedMessages = resolveReaderMessages(messages)
+  const mergedMessages = useMemo(() => resolveReaderMessages(messages), [messages])
   const playerRef = useRef<YT.Player | null>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
   const playerId = useId().replace(/:/g, '')
 
   const [currentTime, setCurrentTime] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
   const [loadError, setLoadError] = useState(false)
+  const [selection, setSelection] = useState<ReaderSelection | null>(null)
 
   const videoId = data.videoId || getYouTubeVideoId(data.videoUrl)
+  const transcript = data.transcript ?? []
+  const chapters = data.chapters ?? []
+  const activeTranscriptIndex = useMemo(
+    () => findActiveTranscriptIndex(currentTime, transcript),
+    [currentTime, transcript],
+  )
+  const activeChapterIndex = useMemo(
+    () => findActiveChapterIndex(currentTime, chapters),
+    [chapters, currentTime],
+  )
 
   useEffect(() => {
     if (!videoId) return
@@ -152,6 +191,91 @@ export function YouTubeReader({
 
     return sections
   }, [data.categories, data.description, data.durationText, data.language, data.likeCount, data.summary, data.viewCount, mergedMessages])
+  const activeTranscript = activeTranscriptIndex >= 0 ? transcript[activeTranscriptIndex] : null
+  const activeChapter = activeChapterIndex >= 0 ? chapters[activeChapterIndex] : null
+  const activeUnit = useMemo(
+    () =>
+      activeTranscript
+        ? {
+            id: activeTranscript.id ?? `segment-${activeTranscript.startMs}`,
+            title: formatTime(activeTranscript.startMs),
+            text: activeTranscript.text,
+            locator: { kind: 'time' as const, timeMs: activeTranscript.startMs },
+          }
+        : activeChapter
+          ? {
+              id: activeChapter.id ?? `chapter-${activeChapter.seconds}`,
+              title: activeChapter.title,
+              text: activeChapter.title,
+              locator: { kind: 'time' as const, timeMs: activeChapter.seconds * 1000 },
+            }
+          : null,
+    [activeChapter, activeTranscript],
+  )
+  const visibleContent = useMemo(() => {
+    if (transcript.length > 0 && activeTranscriptIndex >= 0) {
+      return transcript
+        .slice(Math.max(0, activeTranscriptIndex - 2), activeTranscriptIndex + 3)
+        .map((segment) => ({
+          id: segment.id ?? `segment-${segment.startMs}`,
+          text: segment.text,
+          locator: { kind: 'time' as const, timeMs: segment.startMs },
+        }))
+    }
+
+    return sidebarSections
+      .flatMap((section) => {
+        if (section.type === 'text') {
+          return [{ id: section.id, text: section.content, locator: { kind: 'time' as const, timeMs: currentTime } }]
+        }
+        if (section.type === 'list') {
+          return section.items.map((item, index) => ({
+            id: `${section.id}-${index}`,
+            text: item,
+            locator: { kind: 'time' as const, timeMs: currentTime },
+          }))
+        }
+        return section.items.map((item, index) => ({
+          id: `${section.id}-${index}`,
+          text: `${item.label}: ${item.value}`,
+          locator: { kind: 'time' as const, timeMs: currentTime },
+        }))
+      })
+      .slice(0, 5)
+  }, [activeTranscriptIndex, currentTime, sidebarSections, transcript])
+  const capabilities = useMemo(
+    () => ({
+      ...defaultReaderCapabilities,
+      textSelection: true,
+      translation: true,
+      annotations: true,
+      aiContext: true,
+      toc: chapters.length > 0,
+      search: false,
+      continuousScroll: true,
+      jumpToLocator: true,
+      extractVisibleText: true,
+    }),
+    [chapters.length],
+  )
+  const resolvedPreferences = useMemo(
+    () => resolveReaderPreferences({ systemDefaults: defaultReaderPreferences }),
+    [],
+  )
+  const runtime = useReaderRuntime({
+    document: identity,
+    capabilities,
+    preferences: resolvedPreferences,
+    activeUnit,
+    visibleContent,
+    translationExecutor,
+    defaultProvider,
+    defaultTargetLang,
+    translationDisplayMode,
+    initialAnnotations,
+    onAnnotationChange,
+    onAnalysisContextChange,
+  })
 
   const seekTo = (timeMs: number) => {
     const player = playerRef.current
@@ -160,6 +284,62 @@ export function YouTubeReader({
     player.seekTo(timeMs / 1000, true)
     setCurrentTime(timeMs)
   }
+
+  useEffect(() => {
+    const handleSelection = () => {
+      setSelection(
+        getScopedSelection({
+          root: rootRef.current,
+          buildRange: (text) => ({
+            start:
+              activeUnit?.locator ?? {
+                kind: 'time',
+                timeMs: currentTime,
+              },
+            quote: { exact: text },
+          }),
+        }),
+      )
+    }
+
+    document.addEventListener('selectionchange', handleSelection)
+    return () => document.removeEventListener('selectionchange', handleSelection)
+  }, [activeUnit, currentTime])
+
+  useEffect(() => {
+    const snapshot = {
+      document: identity,
+      location: activeUnit?.locator ?? { kind: 'time' as const, timeMs: currentTime },
+      progress: data.durationMs && data.durationMs > 0 ? currentTime / data.durationMs : undefined,
+      selection: selection ?? undefined,
+      visibleContent,
+      annotationsCount: runtime.annotations.length,
+    }
+
+    onProgressChange?.({
+      documentId: identity.documentId,
+      locator: snapshot.location,
+      progress: snapshot.progress,
+      lastReadAt: new Date().toISOString(),
+    })
+    onSessionSnapshotChange?.(snapshot)
+    runtime.updateSessionSnapshot(snapshot)
+  }, [
+    currentTime,
+    data.durationMs,
+    identity,
+    onProgressChange,
+    onSessionSnapshotChange,
+    runtime.annotations.length,
+    runtime.updateSessionSnapshot,
+    selection,
+    activeUnit,
+    visibleContent,
+  ])
+
+  useEffect(() => {
+    renderReaderQuoteHighlights(rootRef.current, runtime.annotations)
+  }, [currentTime, runtime.annotations, sidebarSections, transcript])
 
   const hero = (
     <>
@@ -244,9 +424,10 @@ export function YouTubeReader({
 
   return (
     <SharedReader
+      rootRef={rootRef}
       hero={hero}
-      chapters={data.chapters ?? []}
-      transcript={data.transcript ?? []}
+      chapters={chapters}
+      transcript={transcript}
       sidebarSections={sidebarSections}
       currentTime={currentTime}
       isPlaying={isPlaying}
@@ -255,6 +436,42 @@ export function YouTubeReader({
       className={className}
       contentHeightClassName={contentHeightClassName}
       sidebarStickyTopClassName={sidebarStickyTopClassName}
+      sidebarExtra={
+        <ReaderWorkspacePanel
+          capabilities={capabilities}
+          selection={selection}
+          activeUnit={activeUnit}
+          annotations={runtime.annotations}
+          activeAnnotationId={runtime.activeAnnotationId}
+          provider={runtime.translation.provider}
+          targetLang={runtime.translation.targetLang}
+          canTranslate={runtime.translation.canTranslate}
+          isTranslating={runtime.translation.isTranslating}
+          translationResponse={runtime.translation.lastResponse}
+          translationError={runtime.translation.error}
+          analysisContext={runtime.analysisContext}
+          onProviderChange={runtime.translation.setProvider}
+          onTargetLangChange={runtime.translation.setTargetLang}
+          onTranslate={(scope) => {
+            void runtime.translation.requestTranslation(scope)
+          }}
+          onCreateAnnotation={(color) => {
+            try {
+              runtime.createAnnotationFromSelection(color)
+            } catch {
+              // no-op: button is only shown when selection exists
+            }
+          }}
+          onSelectAnnotation={(annotation) => {
+            runtime.selectAnnotation(annotation.id)
+            if (annotation.range.start.kind === 'time') {
+              seekTo(annotation.range.start.timeMs)
+            }
+          }}
+          onUpdateAnnotationBody={runtime.updateAnnotationBody}
+          onDeleteAnnotation={runtime.deleteAnnotation}
+        />
+      }
     />
   )
 }

@@ -4,6 +4,16 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { format } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
 import {
+  defaultReaderCapabilities,
+  defaultReaderPreferences,
+  getScopedSelection,
+  ReaderSelection,
+  ReaderWorkspacePanel,
+  renderReaderQuoteHighlights,
+  resolveReaderPreferences,
+  useReaderRuntime,
+} from '@/components/reader-platform'
+import {
   Calendar,
   Clock,
   ExternalLink,
@@ -16,13 +26,20 @@ import {
 } from 'lucide-react'
 
 import { Slider } from '../ui/slider'
-import { canRenderAudioSource, formatTime, resolveReaderMessages } from './helpers'
+import {
+  canRenderAudioSource,
+  findActiveChapterIndex,
+  findActiveTranscriptIndex,
+  formatTime,
+  resolveReaderMessages,
+} from './helpers'
 import { SharedReader } from './shared-reader'
 import type { PodcastReaderProps, ReaderSidebarSection } from './types'
 
 const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2]
 
 export function PodcastReader({
+  identity,
   data,
   className,
   contentHeightClassName,
@@ -30,9 +47,19 @@ export function PodcastReader({
   dateLocale = zhCN,
   dateFormat = 'yyyy/M/d',
   messages,
+  onProgressChange,
+  onSessionSnapshotChange,
+  translationExecutor,
+  defaultProvider,
+  defaultTargetLang,
+  translationDisplayMode,
+  initialAnnotations,
+  onAnnotationChange,
+  onAnalysisContextChange,
 }: PodcastReaderProps) {
   const audioRef = useRef<HTMLAudioElement>(null)
-  const mergedMessages = resolveReaderMessages(messages)
+  const rootRef = useRef<HTMLDivElement>(null)
+  const mergedMessages = useMemo(() => resolveReaderMessages(messages), [messages])
 
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
@@ -40,9 +67,20 @@ export function PodcastReader({
   const [volume, setVolume] = useState(1)
   const [isMuted, setIsMuted] = useState(false)
   const [playbackRate, setPlaybackRate] = useState(1)
+  const [selection, setSelection] = useState<ReaderSelection | null>(null)
 
   const audioSrc = canRenderAudioSource(data.audioUrl) ? data.audioUrl : undefined
   const timelineDuration = duration || data.durationMs || 0
+  const transcript = data.transcript ?? []
+  const chapters = data.chapters ?? []
+  const activeTranscriptIndex = useMemo(
+    () => findActiveTranscriptIndex(currentTime, transcript),
+    [currentTime, transcript],
+  )
+  const activeChapterIndex = useMemo(
+    () => findActiveChapterIndex(currentTime, chapters),
+    [chapters, currentTime],
+  )
 
   useEffect(() => {
     const audio = audioRef.current
@@ -142,6 +180,149 @@ export function PodcastReader({
 
     return sections
   }, [data.description, data.keywords, data.notes, data.summary, data.takeaways, mergedMessages])
+  const activeTranscript = activeTranscriptIndex >= 0 ? transcript[activeTranscriptIndex] : null
+  const activeChapter = activeChapterIndex >= 0 ? chapters[activeChapterIndex] : null
+  const activeUnit = useMemo(
+    () =>
+      activeTranscript
+        ? {
+            id: activeTranscript.id ?? `segment-${activeTranscript.startMs}`,
+            title: activeTranscript.speaker
+              ? `[${activeTranscript.speaker}] ${formatTime(activeTranscript.startMs)}`
+              : formatTime(activeTranscript.startMs),
+            text: activeTranscript.text,
+            locator: { kind: 'time' as const, timeMs: activeTranscript.startMs },
+          }
+        : activeChapter
+          ? {
+              id: activeChapter.id ?? `chapter-${activeChapter.seconds}`,
+              title: activeChapter.title,
+              text: activeChapter.title,
+              locator: { kind: 'time' as const, timeMs: activeChapter.seconds * 1000 },
+            }
+          : null,
+    [activeChapter, activeTranscript],
+  )
+  const visibleContent = useMemo(() => {
+    if (transcript.length > 0 && activeTranscriptIndex >= 0) {
+      return transcript
+        .slice(Math.max(0, activeTranscriptIndex - 2), activeTranscriptIndex + 3)
+        .map((segment) => ({
+          id: segment.id ?? `segment-${segment.startMs}`,
+          text: segment.text,
+          locator: { kind: 'time' as const, timeMs: segment.startMs },
+        }))
+    }
+
+    return sidebarSections
+      .flatMap((section) => {
+        if (section.type === 'text') {
+          return [{ id: section.id, text: section.content, locator: { kind: 'time' as const, timeMs: currentTime } }]
+        }
+        if (section.type === 'list') {
+          return section.items.map((item, index) => ({
+            id: `${section.id}-${index}`,
+            text: item,
+            locator: { kind: 'time' as const, timeMs: currentTime },
+          }))
+        }
+        return section.items.map((item, index) => ({
+          id: `${section.id}-${index}`,
+          text: `${item.label}: ${item.value}`,
+          locator: { kind: 'time' as const, timeMs: currentTime },
+        }))
+      })
+      .slice(0, 5)
+  }, [activeTranscriptIndex, currentTime, sidebarSections, transcript])
+  const capabilities = useMemo(
+    () => ({
+      ...defaultReaderCapabilities,
+      textSelection: true,
+      translation: true,
+      annotations: true,
+      aiContext: true,
+      toc: chapters.length > 0,
+      search: false,
+      continuousScroll: true,
+      jumpToLocator: true,
+      extractVisibleText: true,
+    }),
+    [chapters.length],
+  )
+  const resolvedPreferences = useMemo(
+    () => resolveReaderPreferences({ systemDefaults: defaultReaderPreferences }),
+    [],
+  )
+  const runtime = useReaderRuntime({
+    document: identity,
+    capabilities,
+    preferences: resolvedPreferences,
+    activeUnit,
+    visibleContent,
+    translationExecutor,
+    defaultProvider,
+    defaultTargetLang,
+    translationDisplayMode,
+    initialAnnotations,
+    onAnnotationChange,
+    onAnalysisContextChange,
+  })
+
+  useEffect(() => {
+    const handleSelection = () => {
+      setSelection(
+        getScopedSelection({
+          root: rootRef.current,
+          buildRange: (text) => ({
+            start:
+              activeUnit?.locator ?? {
+                kind: 'time',
+                timeMs: currentTime,
+              },
+            quote: { exact: text },
+          }),
+        }),
+      )
+    }
+
+    document.addEventListener('selectionchange', handleSelection)
+    return () => document.removeEventListener('selectionchange', handleSelection)
+  }, [activeUnit, currentTime])
+
+  useEffect(() => {
+    const snapshot = {
+      document: identity,
+      location: activeUnit?.locator ?? { kind: 'time' as const, timeMs: currentTime },
+      progress: timelineDuration > 0 ? currentTime / timelineDuration : 0,
+      selection: selection ?? undefined,
+      visibleContent,
+      annotationsCount: runtime.annotations.length,
+    }
+
+    onProgressChange?.({
+      documentId: identity.documentId,
+      locator: snapshot.location,
+      progress: snapshot.progress,
+      lastReadAt: new Date().toISOString(),
+    })
+    onSessionSnapshotChange?.(snapshot)
+    runtime.updateSessionSnapshot(snapshot)
+  }, [
+    currentTime,
+    identity,
+    onProgressChange,
+    onSessionSnapshotChange,
+    runtime.annotations.length,
+    runtime.updateSessionSnapshot,
+    selection,
+    timelineDuration,
+    activeUnit,
+    visibleContent,
+  ])
+
+  useEffect(() => {
+    renderReaderQuoteHighlights(rootRef.current, runtime.annotations)
+  }, [runtime.annotations, sidebarSections, transcript, currentTime])
 
   const togglePlay = () => {
     const audio = audioRef.current
@@ -342,9 +523,10 @@ export function PodcastReader({
 
   return (
     <SharedReader
+      rootRef={rootRef}
       hero={hero}
-      chapters={data.chapters ?? []}
-      transcript={data.transcript ?? []}
+      chapters={chapters}
+      transcript={transcript}
       sidebarSections={sidebarSections}
       currentTime={currentTime}
       isPlaying={isPlaying}
@@ -353,6 +535,42 @@ export function PodcastReader({
       className={className}
       contentHeightClassName={contentHeightClassName}
       sidebarStickyTopClassName={sidebarStickyTopClassName}
+      sidebarExtra={
+        <ReaderWorkspacePanel
+          capabilities={capabilities}
+          selection={selection}
+          activeUnit={activeUnit}
+          annotations={runtime.annotations}
+          activeAnnotationId={runtime.activeAnnotationId}
+          provider={runtime.translation.provider}
+          targetLang={runtime.translation.targetLang}
+          canTranslate={runtime.translation.canTranslate}
+          isTranslating={runtime.translation.isTranslating}
+          translationResponse={runtime.translation.lastResponse}
+          translationError={runtime.translation.error}
+          analysisContext={runtime.analysisContext}
+          onProviderChange={runtime.translation.setProvider}
+          onTargetLangChange={runtime.translation.setTargetLang}
+          onTranslate={(scope) => {
+            void runtime.translation.requestTranslation(scope)
+          }}
+          onCreateAnnotation={(color) => {
+            try {
+              runtime.createAnnotationFromSelection(color)
+            } catch {
+              // no-op: button is only shown when selection exists
+            }
+          }}
+          onSelectAnnotation={(annotation) => {
+            runtime.selectAnnotation(annotation.id)
+            if (annotation.range.start.kind === 'time') {
+              seekTo(annotation.range.start.timeMs)
+            }
+          }}
+          onUpdateAnnotationBody={runtime.updateAnnotationBody}
+          onDeleteAnnotation={runtime.deleteAnnotation}
+        />
+      }
     />
   )
 }

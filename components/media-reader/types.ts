@@ -1,4 +1,9 @@
 import type { Locale } from 'date-fns'
+import type {
+  ReaderDocumentIdentity,
+  ReaderPersistenceEvents,
+  ReaderRuntimeProps,
+} from '@/components/reader-platform'
 
 export interface ReaderChapter {
   id?: string
@@ -117,10 +122,12 @@ export interface YouTubeReaderData {
   transcript?: ReaderTranscriptSegment[]
 }
 
-export interface PodcastReaderProps extends ReaderChromeProps {
+export interface PodcastReaderProps extends ReaderChromeProps, ReaderRuntimeProps, ReaderPersistenceEvents {
+  identity: ReaderDocumentIdentity
   data: PodcastReaderData
 }
 
-export interface YouTubeReaderProps extends ReaderChromeProps {
+export interface YouTubeReaderProps extends ReaderChromeProps, ReaderRuntimeProps, ReaderPersistenceEvents {
+  identity: ReaderDocumentIdentity
   data: YouTubeReaderData
 }

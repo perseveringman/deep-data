@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { FileText, Hash, Info, Lightbulb, List } from 'lucide-react'
 
 import { cn } from '../../lib/utils'
@@ -32,6 +32,8 @@ interface SharedReaderProps {
   className?: string
   contentHeightClassName?: string
   sidebarStickyTopClassName?: string
+  rootRef?: RefObject<HTMLDivElement | null>
+  sidebarExtra?: ReactNode
 }
 
 const toneClasses: Record<ReaderSectionTone, string> = {
@@ -130,6 +132,8 @@ export function SharedReader({
   className,
   contentHeightClassName = 'h-[calc(100vh-80px)]',
   sidebarStickyTopClassName = 'top-12',
+  rootRef,
+  sidebarExtra,
 }: SharedReaderProps) {
   const [activeTab, setActiveTab] = useState<ReaderTab>(chapters.length > 0 ? 'chapters' : 'transcript')
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -165,7 +169,7 @@ export function SharedReader({
   )
 
   return (
-    <div className={cn('grid grid-cols-12 gap-3', className)}>
+    <div ref={rootRef} className={cn('grid grid-cols-12 gap-3', className)}>
       <div className={cn('col-span-12 flex flex-col gap-2 lg:col-span-8', contentHeightClassName)}>
         {hero}
 
@@ -274,6 +278,7 @@ export function SharedReader({
           {sidebarSections.map((section) => (
             <SidebarSection key={section.id} section={section} />
           ))}
+          {sidebarExtra}
         </div>
       </div>
     </div>

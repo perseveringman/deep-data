@@ -9,9 +9,9 @@ import rehypeSanitize from 'rehype-sanitize'
 import { DocumentShell } from '@/components/document-reader/shared'
 import type {
   ReaderContentSlice,
+  ReaderRuntimeProps,
   ReaderDocumentIdentity,
   ReaderPersistenceEvents,
-  ReaderPreferences,
   ReaderPreferencesPatch,
   ReaderPreferencesChangeEvent,
   ReaderSearchResult,
@@ -19,7 +19,16 @@ import type {
   ReaderSessionSnapshot,
   ReaderTocItem,
 } from '@/components/reader-platform'
-import { defaultReaderCapabilities, defaultReaderPreferenceCapabilities, locatorEquals } from '@/components/reader-platform'
+import {
+  defaultReaderCapabilities,
+  defaultReaderPreferenceCapabilities,
+  defaultReaderPreferences,
+  getScopedSelection,
+  ReaderWorkspacePanel,
+  renderReaderQuoteHighlights,
+  resolveReaderPreferences,
+  useReaderRuntime,
+} from '@/components/reader-platform'
 import { cn } from '@/lib/utils'
 
 import { parseMarkdownDocument, remarkHeadingIdPlugin, searchMarkdownDocument } from './parser'
@@ -28,7 +37,7 @@ type MarkdownReaderSource =
   | { markdown: string }
   | { url: string }
 
-export interface MarkdownReaderProps extends ReaderPersistenceEvents {
+export interface MarkdownReaderProps extends ReaderPersistenceEvents, ReaderRuntimeProps {
   identity: ReaderDocumentIdentity
   source: MarkdownReaderSource
   toc?: boolean
@@ -38,25 +47,42 @@ export interface MarkdownReaderProps extends ReaderPersistenceEvents {
   onPreferencesChange?: (event: ReaderPreferencesChangeEvent) => void
 }
 
-function getSelectionRange(): ReaderSelection | null {
-  const selection = window.getSelection()
-  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return null
+function findNearestAnchor(node: Node | null, root: HTMLElement | null, fallbackAnchor: string): string {
+  let current: HTMLElement | null =
+    node instanceof HTMLElement ? node : node?.parentElement ?? null
 
-  const text = selection.toString().trim()
-  if (!text) return null
-
-  return {
-    text,
-    range: {
-      start: {
-        kind: 'anchor',
-        anchor: 'selection',
-      },
-      quote: {
-        exact: text,
-      },
-    },
+  while (current) {
+    if (current.id) {
+      return current.id
+    }
+    current = current.parentElement
   }
+
+  const element = node instanceof HTMLElement ? node : node?.parentElement ?? null
+  if (!root || !element) return fallbackAnchor
+
+  const headings = Array.from(
+    root.querySelectorAll<HTMLElement>('h1[id], h2[id], h3[id], h4[id], h5[id], h6[id]'),
+  )
+
+  let nearestAnchor = fallbackAnchor
+  for (const heading of headings) {
+    const relation = heading.compareDocumentPosition(element)
+    if (relation & Node.DOCUMENT_POSITION_FOLLOWING) {
+      nearestAnchor = heading.id
+      continue
+    }
+
+    if (relation & Node.DOCUMENT_POSITION_PRECEDING) {
+      break
+    }
+  }
+
+  if (nearestAnchor) {
+    return nearestAnchor
+  }
+
+  return fallbackAnchor
 }
 
 export function MarkdownReader({
@@ -69,6 +95,13 @@ export function MarkdownReader({
   onPreferencesChange,
   onProgressChange,
   onSessionSnapshotChange,
+  translationExecutor,
+  defaultProvider,
+  defaultTargetLang,
+  translationDisplayMode,
+  initialAnnotations,
+  onAnnotationChange,
+  onAnalysisContextChange,
 }: MarkdownReaderProps) {
   const contentRef = useRef<HTMLDivElement>(null)
 
@@ -102,6 +135,64 @@ export function MarkdownReader({
     () => (search ? searchMarkdownDocument(markdown, searchQuery) : []),
     [markdown, search, searchQuery],
   )
+  const capabilities = useMemo(
+    () => ({
+      ...defaultReaderCapabilities,
+      textSelection: true,
+      translation: true,
+      annotations: true,
+      aiContext: true,
+      toc,
+      search,
+      continuousScroll: true,
+      jumpToLocator: true,
+      extractVisibleText: true,
+    }),
+    [search, toc],
+  )
+  const resolvedPreferences = useMemo(
+    () => resolveReaderPreferences({ systemDefaults: defaultReaderPreferences }, preferences),
+    [preferences],
+  )
+  const selectedAnchor = selection?.range.start.kind === 'anchor' ? selection.range.start.anchor : null
+  const activeSectionAnchor = selectedAnchor ?? activeAnchor
+  const activeSectionIndex = useMemo(
+    () => Math.max(0, parsed.sections.findIndex((section) => section.id === activeSectionAnchor)),
+    [activeSectionAnchor, parsed.sections],
+  )
+  const visibleSections = useMemo(
+    () => parsed.sections.slice(activeSectionIndex, activeSectionIndex + 3),
+    [activeSectionIndex, parsed.sections],
+  )
+  const activeSection = parsed.sections[activeSectionIndex] ?? null
+  const activeUnit = activeSection
+    ? {
+        id: activeSection.id,
+        title: activeSection.title,
+        text: activeSection.text,
+        markdown: activeSection.text,
+        locator: { kind: 'anchor' as const, anchor: activeSection.id },
+      }
+    : null
+  const runtime = useReaderRuntime({
+    document: identity,
+    capabilities,
+    preferences: resolvedPreferences,
+    activeUnit,
+    visibleContent: visibleSections.map<ReaderContentSlice>((section) => ({
+      id: section.id,
+      text: section.text,
+      markdown: section.text,
+      locator: { kind: 'anchor', anchor: section.id },
+    })),
+    translationExecutor,
+    defaultProvider,
+    defaultTargetLang,
+    translationDisplayMode,
+    initialAnnotations,
+    onAnnotationChange,
+    onAnalysisContextChange,
+  })
 
   useEffect(() => {
     if (!contentRef.current) return
@@ -135,12 +226,29 @@ export function MarkdownReader({
 
   useEffect(() => {
     const handleSelection = () => {
-      setSelection(getSelectionRange())
+      setSelection(
+        getScopedSelection({
+          root: contentRef.current,
+          buildRange: (text, domRange) => ({
+            start: {
+              kind: 'anchor',
+              anchor: findNearestAnchor(domRange.startContainer, contentRef.current, activeAnchor),
+            },
+            quote: {
+              exact: text,
+            },
+          }),
+        }),
+      )
     }
 
     document.addEventListener('selectionchange', handleSelection)
     return () => document.removeEventListener('selectionchange', handleSelection)
-  }, [])
+  }, [activeAnchor])
+
+  useEffect(() => {
+    renderReaderQuoteHighlights(contentRef.current, runtime.annotations)
+  }, [markdown, runtime.annotations])
 
   useEffect(() => {
     const locator = {
@@ -167,16 +275,28 @@ export function MarkdownReader({
           : 0,
       selection: selection ?? undefined,
       activeTocItemId: activeAnchor,
-      visibleContent: parsed.sections.slice(0, 3).map<ReaderContentSlice>((section) => ({
+      visibleContent: visibleSections.map<ReaderContentSlice>((section) => ({
         id: section.id,
         text: section.text,
         markdown: section.text,
         locator: { kind: 'anchor', anchor: section.id },
       })),
+      annotationsCount: runtime.annotations.length,
     }
 
+    runtime.updateSessionSnapshot(snapshot)
     onSessionSnapshotChange?.(snapshot)
-  }, [activeAnchor, identity, onProgressChange, onSessionSnapshotChange, parsed.headingIds, parsed.sections, selection])
+  }, [
+    activeAnchor,
+    identity,
+    onProgressChange,
+    onSessionSnapshotChange,
+    parsed.headingIds,
+    runtime.annotations.length,
+    runtime.updateSessionSnapshot,
+    selection,
+    visibleSections,
+  ])
 
   const jumpToAnchor = (item: ReaderTocItem | ReaderSearchResult) => {
     const anchor = item.locator.kind === 'anchor' ? item.locator.anchor : null
@@ -191,18 +311,7 @@ export function MarkdownReader({
     <DocumentShell
       title={identity.title}
       subtitle="Markdown Reader"
-      capabilities={{
-        ...defaultReaderCapabilities,
-        textSelection: true,
-        translation: true,
-        annotations: true,
-        aiContext: true,
-        toc,
-        search,
-        continuousScroll: true,
-        jumpToLocator: true,
-        extractVisibleText: true,
-      }}
+      capabilities={capabilities}
       preferenceCapabilities={{
         ...defaultReaderPreferenceCapabilities,
         behavior: {
@@ -213,7 +322,7 @@ export function MarkdownReader({
       preferences={preferences}
       onPreferencesChange={onPreferencesChange}
       toc={parsed.toc}
-      activeTocId={activeAnchor}
+      activeTocId={activeSectionAnchor}
       onTocSelect={jumpToAnchor}
       searchQuery={searchQuery}
       onSearchQueryChange={setSearchQuery}
@@ -255,22 +364,41 @@ export function MarkdownReader({
         </div>
       }
       rightSidebarExtra={
-        <div className="space-y-3">
-          {selection ? (
-            <div className="rounded border p-3">
-              <p className="mb-2 text-xs font-medium text-muted-foreground">当前选中文本</p>
-              <p className="text-sm">{selection.text}</p>
-            </div>
-          ) : null}
-          <div className="rounded border p-3">
-            <p className="mb-2 text-xs font-medium text-muted-foreground">当前章节</p>
-            <p className="text-sm">
-              {parsed.sections.find((section) =>
-                locatorEquals({ kind: 'anchor', anchor: section.id }, { kind: 'anchor', anchor: activeAnchor }),
-              )?.title ?? '未进入章节'}
-            </p>
-          </div>
-        </div>
+        <ReaderWorkspacePanel
+          capabilities={capabilities}
+          selection={selection}
+          activeUnit={activeUnit}
+          annotations={runtime.annotations}
+          activeAnnotationId={runtime.activeAnnotationId}
+          provider={runtime.translation.provider}
+          targetLang={runtime.translation.targetLang}
+          canTranslate={runtime.translation.canTranslate}
+          isTranslating={runtime.translation.isTranslating}
+          translationResponse={runtime.translation.lastResponse}
+          translationError={runtime.translation.error}
+          analysisContext={runtime.analysisContext}
+          onProviderChange={runtime.translation.setProvider}
+          onTargetLangChange={runtime.translation.setTargetLang}
+          onTranslate={(scope) => {
+            void runtime.translation.requestTranslation(scope)
+          }}
+          onCreateAnnotation={(color) => {
+            try {
+              runtime.createAnnotationFromSelection(color)
+            } catch {
+              // no-op: button is only shown when selection exists
+            }
+          }}
+          onSelectAnnotation={(annotation) => {
+            runtime.selectAnnotation(annotation.id)
+            if (annotation.range.start.kind === 'anchor') {
+              const element = document.getElementById(annotation.range.start.anchor)
+              element?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+            }
+          }}
+          onUpdateAnnotationBody={runtime.updateAnnotationBody}
+          onDeleteAnnotation={runtime.deleteAnnotation}
+        />
       }
     />
   )
