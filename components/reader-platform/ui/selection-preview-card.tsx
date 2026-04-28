@@ -5,7 +5,6 @@ import { ChevronLeft, Languages, NotebookPen, Sparkles, X } from 'lucide-react'
 
 import {
   readerHighlightColors,
-  type ReaderAnnotation,
   type ReaderHighlightColor,
 } from '@/components/reader-platform/annotations'
 import type {
@@ -17,8 +16,6 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 
-import type { ReaderWorkspaceSection } from './reader-workspace-ids'
-
 interface SelectionPreviewCardProps {
   mode: Extract<SelectionOverlayMode, 'translate' | 'ai' | 'note'>
   selectionText: string
@@ -28,16 +25,12 @@ interface SelectionPreviewCardProps {
   aiPreview?: SelectionAiPreview | null
   noteDraft: string
   noteColor: ReaderHighlightColor
-  lastAction?: {
-    kind: 'note'
-    annotation: ReaderAnnotation
-  } | null
   onNoteDraftChange: (value: string) => void
   onNoteColorChange: (color: ReaderHighlightColor) => void
   onSaveNote: () => void
   onBack: () => void
   onDismiss: () => void
-  onOpenSidebar: (section: ReaderWorkspaceSection) => void
+  onOpenSidebar: (section: 'translation' | 'ai' | 'annotations') => void
   onStickyStart: () => void
   onStickyEnd: () => void
 }
@@ -67,7 +60,6 @@ export function SelectionPreviewCard({
   aiPreview,
   noteDraft,
   noteColor,
-  lastAction,
   onNoteDraftChange,
   onNoteColorChange,
   onSaveNote,
@@ -83,11 +75,7 @@ export function SelectionPreviewCard({
       ? '翻译预览'
       : mode === 'ai'
         ? 'AI 预览'
-        : lastAction?.annotation.bodyMarkdown?.trim()
-          ? '笔记已保存'
-          : lastAction
-            ? '高亮已创建'
-            : '快速笔记'
+        : '快速笔记'
   const Icon =
     mode === 'translate'
       ? Languages
@@ -182,62 +170,42 @@ export function SelectionPreviewCard({
 
       {mode === 'note' ? (
         <div className="mt-3 space-y-3">
-          {lastAction ? (
-            <>
-              <div className="rounded-lg border bg-muted/20 px-3 py-2">
-                <p className="text-sm">
-                  {lastAction.annotation.bodyMarkdown?.trim()
-                    ? '笔记已保存到当前高亮。'
-                    : '高亮已创建，可直接去右侧继续写长文。'}
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  当前颜色：{lastAction.annotation.color}。右侧的 Markdown 编辑区可以继续扩写长文。
-                </p>
-              </div>
-              <Button type="button" size="sm" variant="outline" onClick={() => onOpenSidebar('annotations')}>
-                在右侧继续编辑
-              </Button>
-            </>
-          ) : (
-            <>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-xs font-medium text-muted-foreground">高亮颜色</p>
-                  <Badge variant="outline">{noteColor}</Badge>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {readerHighlightColors.map((color) => (
-                    <Button
-                      key={color}
-                      type="button"
-                      size="sm"
-                      variant={color === noteColor ? 'default' : 'outline'}
-                      onMouseDown={preserveSelection}
-                      onClick={() => onNoteColorChange(color)}
-                    >
-                      {color}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-              <Textarea
-                value={noteDraft}
-                onChange={(event) => onNoteDraftChange(event.target.value)}
-                onFocus={handleFocus(onStickyStart)}
-                onBlur={handleBlur(onStickyEnd)}
-                placeholder="输入简短笔记..."
-                className="min-h-24 text-sm"
-              />
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-xs text-muted-foreground">
-                  已自动创建高亮。这里适合记短注，右侧 Markdown 可继续写长文。
-                </p>
-                <Button type="button" size="sm" onClick={onSaveNote}>
-                  {noteDraft.trim() ? '保存笔记' : '去右侧继续写'}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-medium text-muted-foreground">高亮颜色</p>
+              <Badge variant="outline">{noteColor}</Badge>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {readerHighlightColors.map((color) => (
+                <Button
+                  key={color}
+                  type="button"
+                  size="sm"
+                  variant={color === noteColor ? 'default' : 'outline'}
+                  onMouseDown={preserveSelection}
+                  onClick={() => onNoteColorChange(color)}
+                >
+                  {color}
                 </Button>
-              </div>
-            </>
-          )}
+              ))}
+            </div>
+          </div>
+          <Textarea
+            value={noteDraft}
+            onChange={(event) => onNoteDraftChange(event.target.value)}
+            onFocus={handleFocus(onStickyStart)}
+            onBlur={handleBlur(onStickyEnd)}
+            placeholder="输入简短笔记..."
+            className="min-h-24 text-sm"
+          />
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs text-muted-foreground">
+              已自动创建高亮。这里适合记短注，完整编辑仍可稍后在右侧进行。
+            </p>
+            <Button type="button" size="sm" onClick={onSaveNote}>
+              {noteDraft.trim() ? '保存笔记' : '保存高亮'}
+            </Button>
+          </div>
         </div>
       ) : null}
 

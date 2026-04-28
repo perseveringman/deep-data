@@ -107,7 +107,6 @@ export function ReaderSelectionOverlayHost({
     endSticky,
     isTranslationPending,
     isVisible,
-    lastAction,
     mode,
     noteDraft,
     noteColor,
@@ -259,7 +258,6 @@ export function ReaderSelectionOverlayHost({
               aiPreview={aiPreview}
               noteDraft={noteDraft}
               noteColor={noteColor}
-              lastAction={lastAction}
               onNoteDraftChange={setNoteDraft}
               onNoteColorChange={setNoteHighlightColor}
               onSaveNote={saveNote}

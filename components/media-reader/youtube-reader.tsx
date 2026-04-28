@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { format } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
 import { Calendar, Clock, ExternalLink, Eye, ThumbsUp } from 'lucide-react'
@@ -337,8 +337,8 @@ export function YouTubeReader({
     setCurrentTime(timeMs)
   }
 
-  useEffect(() => {
-    const handleSelection = () => {
+  const syncSelection = useCallback(() => {
+    window.requestAnimationFrame(() => {
       setSelection(
         getScopedSelection({
           root: contentSurfaceRef.current,
@@ -352,11 +352,17 @@ export function YouTubeReader({
           }),
         }),
       )
-    }
-
-    document.addEventListener('selectionchange', handleSelection)
-    return () => document.removeEventListener('selectionchange', handleSelection)
+    })
   }, [activeUnit, currentTime])
+
+  useEffect(() => {
+    document.addEventListener('pointerup', syncSelection)
+    document.addEventListener('keyup', syncSelection)
+    return () => {
+      document.removeEventListener('pointerup', syncSelection)
+      document.removeEventListener('keyup', syncSelection)
+    }
+  }, [syncSelection])
 
   useEffect(() => {
     const snapshot = {

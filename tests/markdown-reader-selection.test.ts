@@ -24,3 +24,16 @@ test('MarkdownReader resolves selection anchors from the nearest preceding headi
   assert.match(source, /root\.querySelectorAll<HTMLElement>\('h1\[id\], h2\[id\], h3\[id\], h4\[id\], h5\[id\], h6\[id\]'\)/)
   assert.match(source, /findNearestAnchor\(domRange\.startContainer, contentRef\.current, activeAnchor\)/)
 })
+
+test('MarkdownReader captures selection after stable pointer and keyboard events', async () => {
+  const source = await readFile(
+    path.join(process.cwd(), 'components/document-reader/markdown/markdown-reader.tsx'),
+    'utf8',
+  )
+
+  assert.match(source, /const syncSelection = useCallback\(/)
+  assert.match(source, /window\.requestAnimationFrame\(/)
+  assert.match(source, /document\.addEventListener\('pointerup', syncSelection\)/)
+  assert.match(source, /document\.addEventListener\('keyup', syncSelection\)/)
+  assert.doesNotMatch(source, /document\.addEventListener\('selectionchange'/)
+})

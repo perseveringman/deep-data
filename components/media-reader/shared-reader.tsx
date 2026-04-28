@@ -1,6 +1,7 @@
 'use client'
 
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -9,9 +10,10 @@ import {
   type ReactNode,
   type RefObject,
 } from 'react'
-import { FileText, Hash, Info, Lightbulb, List } from 'lucide-react'
+import { ArrowUp, FileText, Hash, Info, Lightbulb, List } from 'lucide-react'
 
 import { ReaderSettingsPanel } from '@/components/document-reader/shared'
+import { Button } from '@/components/ui/button'
 import {
   getReaderPreferenceCssVariables,
   type ReaderPreferenceCapabilities,
@@ -19,6 +21,7 @@ import {
   type ReaderPreferencesPatch,
 } from '@/components/reader-platform'
 import { cn } from '../../lib/utils'
+import { useMediaSelectionGesture } from './use-media-selection-gesture'
 import {
   findActiveChapterIndex,
   findActiveTranscriptIndex,
@@ -173,8 +176,13 @@ export function SharedReader({
   onPreferencesReset,
 }: SharedReaderProps) {
   const [activeTab, setActiveTab] = useState<ReaderTab>(chapters.length > 0 ? 'chapters' : 'transcript')
+  const [autoFollowMode, setAutoFollowMode] = useState<'following' | 'free'>('following')
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const activeItemRef = useRef<HTMLDivElement>(null)
+  const programmaticScrollRef = useRef(false)
+  const scrollSettledFrameRef = useRef<number | null>(null)
+  const lastProgrammaticScrollTopRef = useRef<number | null>(null)
+  const stableProgrammaticFramesRef = useRef(0)
   const resolvedPreferences = preferences
   const cssVars = useMemo(
     () => (resolvedPreferences ? (getReaderPreferenceCssVariables(resolvedPreferences) as CSSProperties) : {}),
@@ -183,6 +191,8 @@ export function SharedReader({
   const showSidebar = resolvedPreferences?.layout.sidebarVisible !== false
   const sidebarOnLeft = showSidebar && resolvedPreferences?.layout.sidebarSide === 'left'
   const scrollBehavior = resolvedPreferences?.behavior.reduceMotion ? 'auto' : 'smooth'
+  const isAutoFollowPaused = autoFollowMode === 'free'
+  const selectionGesture = useMediaSelectionGesture()
   const panelStyle = {
     backgroundColor: 'var(--reader-surface-background)',
     color: 'var(--reader-surface-foreground)',
@@ -206,17 +216,77 @@ export function SharedReader({
   }, [chapters.length])
 
   useEffect(() => {
-    if (!isPlaying || !scrollContainerRef.current || !activeItemRef.current) return
+    setAutoFollowMode('following')
+  }, [activeTab])
+
+  const unlockProgrammaticScroll = useCallback(() => {
+    if (scrollSettledFrameRef.current !== null) {
+      window.cancelAnimationFrame(scrollSettledFrameRef.current)
+      scrollSettledFrameRef.current = null
+    }
+
+    lastProgrammaticScrollTopRef.current = null
+    stableProgrammaticFramesRef.current = 0
+    programmaticScrollRef.current = false
+  }, [])
+
+  const monitorProgrammaticScroll = useCallback(() => {
+    const container = scrollContainerRef.current
+
+    if (!container) {
+      unlockProgrammaticScroll()
+      return
+    }
+
+    const currentTop = container.scrollTop
+
+    if (
+      lastProgrammaticScrollTopRef.current === null ||
+      Math.abs(currentTop - lastProgrammaticScrollTopRef.current) > 0.5
+    ) {
+      lastProgrammaticScrollTopRef.current = currentTop
+      stableProgrammaticFramesRef.current = 0
+    } else {
+      stableProgrammaticFramesRef.current += 1
+
+      if (stableProgrammaticFramesRef.current >= 2) {
+        unlockProgrammaticScroll()
+        return
+      }
+    }
+
+    scrollSettledFrameRef.current = window.requestAnimationFrame(monitorProgrammaticScroll)
+  }, [unlockProgrammaticScroll])
+
+  useEffect(() => unlockProgrammaticScroll, [unlockProgrammaticScroll])
+
+  const scrollActiveItemIntoView = useCallback(() => {
+    if (!scrollContainerRef.current || !activeItemRef.current) return
 
     const container = scrollContainerRef.current
     const element = activeItemRef.current
     const containerRect = container.getBoundingClientRect()
     const elementRect = element.getBoundingClientRect()
 
-    if (elementRect.top < containerRect.top || elementRect.bottom > containerRect.bottom) {
-      element.scrollIntoView({ behavior: scrollBehavior, block: 'center' })
+    if (elementRect.top >= containerRect.top && elementRect.bottom <= containerRect.bottom) {
+      return
     }
-  }, [activeTab, currentTime, isPlaying, scrollBehavior])
+
+    programmaticScrollRef.current = true
+    if (scrollSettledFrameRef.current !== null) {
+      window.cancelAnimationFrame(scrollSettledFrameRef.current)
+    }
+    lastProgrammaticScrollTopRef.current = container.scrollTop
+    stableProgrammaticFramesRef.current = 0
+    element.scrollIntoView({ behavior: scrollBehavior, block: 'center' })
+    scrollSettledFrameRef.current = window.requestAnimationFrame(monitorProgrammaticScroll)
+  }, [monitorProgrammaticScroll, scrollBehavior])
+
+  useEffect(() => {
+    if (!isPlaying || isAutoFollowPaused || !scrollContainerRef.current || !activeItemRef.current) return
+
+    scrollActiveItemIntoView()
+  }, [activeTab, currentTime, isPlaying, isAutoFollowPaused, scrollActiveItemIntoView])
 
   const activeTranscriptIndex = useMemo(
     () => findActiveTranscriptIndex(currentTime, transcript),
@@ -227,6 +297,27 @@ export function SharedReader({
     () => findActiveChapterIndex(currentTime, chapters),
     [chapters, currentTime],
   )
+  const handleSeekIntent = useCallback(
+    (timeMs: number) => {
+      if (selectionGesture.shouldSuppressSeek()) {
+        selectionGesture.syncAfterGesture()
+        return
+      }
+
+      setAutoFollowMode('following')
+      onSeek(timeMs)
+    },
+    [onSeek, selectionGesture],
+  )
+  const handleScrollContainerScroll = useCallback(() => {
+    if (!isPlaying || programmaticScrollRef.current) return
+
+    setAutoFollowMode('free')
+  }, [isPlaying])
+  const resumeAutoFollow = useCallback(() => {
+    setAutoFollowMode('following')
+    scrollActiveItemIntoView()
+  }, [scrollActiveItemIntoView])
 
   return (
     <div
@@ -330,7 +421,27 @@ export function SharedReader({
             </span>
             </div>
 
-            <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
+            <div
+              ref={scrollContainerRef}
+              className="relative flex-1 overflow-y-auto"
+              onScroll={handleScrollContainerScroll}
+              onPointerDownCapture={selectionGesture.handlePointerDownCapture}
+              onPointerUpCapture={selectionGesture.handlePointerUpCapture}
+              onKeyUpCapture={selectionGesture.handleKeyUpCapture}
+            >
+              {isAutoFollowPaused ? (
+                <div className="pointer-events-none absolute right-2 top-2 z-10 flex justify-end">
+                  <div className="pointer-events-auto max-w-[220px] rounded-md border bg-background/95 px-2.5 py-2 shadow-sm backdrop-blur">
+                    <div className="flex items-center gap-2">
+                      <p className="min-w-0 flex-1 text-xs font-medium">正在自由查看</p>
+                      <Button type="button" size="sm" variant="outline" onClick={resumeAutoFollow}>
+                        <ArrowUp className="h-3.5 w-3.5" />
+                        回到自动滚动
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
               {activeTab === 'chapters' && chapters.length > 0 ? (
                 <div className="space-y-0.5">
                   {chapters.map((chapter, index) => {
@@ -340,7 +451,7 @@ export function SharedReader({
                       <div
                         key={chapter.id ?? `${chapter.seconds}-${chapter.title}`}
                         ref={isActive ? activeItemRef : null}
-                        onClick={() => onSeek(chapter.seconds * 1000)}
+                        onClick={() => handleSeekIntent(chapter.seconds * 1000)}
                         className={cn(
                           'cursor-pointer rounded px-2 py-1 transition-colors',
                           isActive ? 'border-l-2 hover:bg-transparent' : 'hover:bg-muted',
@@ -386,7 +497,7 @@ export function SharedReader({
                       <div
                         key={segment.id ?? `${segment.startMs}-${segment.text.slice(0, 24)}`}
                         ref={isActive ? activeItemRef : null}
-                        onClick={() => onSeek(segment.startMs)}
+                        onClick={() => handleSeekIntent(segment.startMs)}
                         className={cn(
                           'cursor-pointer rounded px-1.5 py-1 text-[length:var(--reader-body-font-size)] transition-colors',
                           isActive ? 'text-foreground' : 'text-muted-foreground hover:bg-muted',

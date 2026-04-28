@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
@@ -265,8 +265,8 @@ export function MarkdownReader({
     return () => observer.disconnect()
   }, [markdown])
 
-  useEffect(() => {
-    const handleSelection = () => {
+  const syncSelection = useCallback(() => {
+    window.requestAnimationFrame(() => {
       setSelection(
         getScopedSelection({
           root: contentRef.current,
@@ -281,11 +281,17 @@ export function MarkdownReader({
           }),
         }),
       )
-    }
-
-    document.addEventListener('selectionchange', handleSelection)
-    return () => document.removeEventListener('selectionchange', handleSelection)
+    })
   }, [activeAnchor])
+
+  useEffect(() => {
+    document.addEventListener('pointerup', syncSelection)
+    document.addEventListener('keyup', syncSelection)
+    return () => {
+      document.removeEventListener('pointerup', syncSelection)
+      document.removeEventListener('keyup', syncSelection)
+    }
+  }, [syncSelection])
 
   useEffect(() => {
     renderReaderQuoteHighlights(contentRef.current, runtime.annotations)

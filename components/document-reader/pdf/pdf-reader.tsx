@@ -26,7 +26,7 @@ import {
   readStoredReaderLocator,
   ReaderSelectionOverlayHost,
   ReaderWorkspacePanel,
-  renderReaderQuoteHighlights,
+  renderPdfQuoteHighlights,
   useManagedReaderPreferences,
   useReaderRuntime,
   writeStoredReaderLocator,
@@ -379,11 +379,11 @@ export function PdfReader({
   ])
 
   useEffect(() => {
-    renderReaderQuoteHighlights(contentRef.current, runtime.annotations)
+    renderPdfQuoteHighlights(contentRef.current, runtime.annotations)
   }, [pageNumber, runtime.annotations, textByPage])
 
   const handleTextLayerRenderSuccess = useCallback(() => {
-    renderReaderQuoteHighlights(contentRef.current, runtime.annotations)
+    renderPdfQuoteHighlights(contentRef.current, runtime.annotations)
   }, [runtime.annotations])
 
   const goToPage = useCallback(

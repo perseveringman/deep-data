@@ -173,6 +173,51 @@ export function EpubReader({
       })
       renditionRef.current = rendition
 
+      rendition.hooks.content.register((contents: any) => {
+        const syncSelection = () => {
+          contents.window.requestAnimationFrame(() => {
+            const scopedSelection = contents?.window?.getSelection?.()
+            const selectedRange =
+              scopedSelection && scopedSelection.rangeCount > 0
+                ? scopedSelection.getRangeAt(0)
+                : null
+            const text = scopedSelection?.toString?.().trim() ?? ''
+
+            if (!text || !selectedRange) {
+              setSelection(null)
+              return
+            }
+
+            const cfiRange = contents?.cfiFromRange?.(selectedRange)
+            if (!cfiRange) {
+              setSelection(null)
+              return
+            }
+
+            const frameElement = contents?.document?.defaultView?.frameElement
+            const frameRect =
+              frameElement instanceof Element ? frameElement.getBoundingClientRect() : null
+            const baseAnchorRect = getRangeAnchorRect(selectedRange)
+            const anchorRect =
+              baseAnchorRect && frameRect
+                ? offsetSelectionAnchorRect(baseAnchorRect, {
+                    top: frameRect.top,
+                    left: frameRect.left,
+                  })
+                : baseAnchorRect
+
+            setSelection({
+              text,
+              anchorRect,
+              range: { start: { kind: 'cfi', cfi: cfiRange }, quote: { exact: text } },
+            })
+          })
+        }
+
+        contents.document.addEventListener('pointerup', syncSelection)
+        contents.document.addEventListener('keyup', syncSelection)
+      })
+
       rendition.on('relocated', (event: any) => {
         if (cancelled) return
         const cfi = event?.start?.cfi ?? ''
@@ -191,35 +236,6 @@ export function EpubReader({
           locator: { kind: 'cfi', cfi },
           lastReadAt: new Date().toISOString(),
         })
-      })
-
-      rendition.on('selected', (cfiRange: string, contents: any) => {
-        const scopedSelection = contents?.window?.getSelection?.()
-        const selectedRange =
-          scopedSelection && scopedSelection.rangeCount > 0
-            ? scopedSelection.getRangeAt(0)
-            : null
-        const text = scopedSelection?.toString?.() ?? ''
-        const frameElement = contents?.document?.defaultView?.frameElement
-        const frameRect =
-          frameElement instanceof Element ? frameElement.getBoundingClientRect() : null
-        const baseAnchorRect = selectedRange ? getRangeAnchorRect(selectedRange) : undefined
-        const anchorRect =
-          baseAnchorRect && frameRect
-            ? offsetSelectionAnchorRect(baseAnchorRect, {
-                top: frameRect.top,
-                left: frameRect.left,
-              })
-            : baseAnchorRect
-        setSelection(
-          text
-            ? {
-                text,
-                anchorRect,
-                range: { start: { kind: 'cfi', cfi: cfiRange }, quote: { exact: text } },
-              }
-            : null,
-        )
       })
 
       await book.ready

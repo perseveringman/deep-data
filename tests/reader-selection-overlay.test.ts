@@ -167,7 +167,7 @@ test('document and media readers mount the shared selection overlay host', async
   assert.match(overlayHost, /const \{\s*actionError,/)
   assert.match(actionBar, /高亮\/笔记/)
   assert.doesNotMatch(actionBar, /aria-label="高亮选中内容"/)
-  assert.match(previewCard, /已自动创建高亮。这里适合记短注，右侧 Markdown 可继续写长文。/)
+  assert.match(previewCard, /已自动创建高亮。这里适合记短注，完整编辑仍可稍后在右侧进行。/)
   assert.match(previewCard, /onNoteColorChange/)
   assert.match(overlayHost, /useSelectionOverlayState/)
 
@@ -190,7 +190,7 @@ test('document and media readers mount the shared selection overlay host', async
 test('EpubReader preserves a translated viewport rect for overlay fallback positioning', async () => {
   const source = await readSource('components/document-reader/epub/epub-reader.tsx')
 
-  assert.match(source, /const baseAnchorRect = selectedRange \? getRangeAnchorRect\(selectedRange\) : undefined/)
+  assert.match(source, /const baseAnchorRect = getRangeAnchorRect\(selectedRange\)/)
   assert.match(source, /offsetSelectionAnchorRect\(baseAnchorRect, \{/)
   assert.match(source, /anchorRect,/)
 })
@@ -198,7 +198,20 @@ test('EpubReader preserves a translated viewport rect for overlay fallback posit
 test('note overlay remains open after highlight creation even if browser selection collapses', async () => {
   const source = await readSource('components/reader-platform/hooks/use-selection-overlay-state.ts')
 
-  assert.match(source, /const persistsWithoutSelection =\s*mode === 'note' && Boolean\(noteAnnotation \|\| lastAction\)/)
+  assert.match(source, /const persistsWithoutSelection =\s*mode === 'note' && Boolean\(noteAnnotation\)/)
   assert.match(source, /if \(persistsWithoutSelection\) {\s*clearCloseTimer\(\)\s*return/s)
   assert.match(source, /if \(!hasTextSelection\(selection\) && !persistsWithoutSelection\)/)
+})
+
+test('saving a note closes the overlay instead of showing a saved confirmation card', async () => {
+  const previewCard = await readSource('components/reader-platform/ui/selection-preview-card.tsx')
+  const overlayState = await readSource('components/reader-platform/hooks/use-selection-overlay-state.ts')
+
+  assert.doesNotMatch(previewCard, /笔记已保存/)
+  assert.doesNotMatch(previewCard, /高亮已创建/)
+  assert.doesNotMatch(previewCard, /在右侧继续编辑/)
+  assert.match(overlayState, /const persistsWithoutSelection =\s*mode === 'note' && Boolean\(noteAnnotation\)/)
+  assert.match(overlayState, /setNoteDraft\(''\)\s*[\r\n\s]*dismiss\(\)/)
+  assert.doesNotMatch(overlayState, /setLastAction\(/)
+  assert.doesNotMatch(overlayState, /onOpenSidebarSection\?\.\('annotations'\)/)
 })

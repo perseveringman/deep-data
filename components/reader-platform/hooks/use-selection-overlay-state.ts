@@ -22,11 +22,6 @@ import type { ReaderWorkspaceSection } from '../ui/reader-workspace-ids'
 const DEFAULT_STICKY_MS = 240
 const DEFAULT_HIGHLIGHT_COLOR: ReaderHighlightColor = 'yellow'
 
-interface OverlayActionResult {
-  kind: 'note'
-  annotation: ReaderAnnotation
-}
-
 interface UseSelectionOverlayStateOptions {
   enabled: boolean
   selection?: ReaderSelection | null
@@ -59,7 +54,6 @@ export function useSelectionOverlayState({
   const [actionError, setActionError] = useState<string | null>(null)
   const [isTranslationPending, setIsTranslationPending] = useState(false)
   const [translationPreview, setTranslationPreview] = useState<TranslationResponse | null>(null)
-  const [lastAction, setLastAction] = useState<OverlayActionResult | null>(null)
   const [noteAnnotation, setNoteAnnotation] = useState<ReaderAnnotation | null>(null)
   const [noteColor, setNoteColor] = useState<ReaderHighlightColor>(DEFAULT_HIGHLIGHT_COLOR)
 
@@ -77,7 +71,6 @@ export function useSelectionOverlayState({
     setActionError(null)
     setIsTranslationPending(false)
     setTranslationPreview(null)
-    setLastAction(null)
     setNoteDraft('')
     setNoteAnnotation(null)
     setNoteColor(DEFAULT_HIGHLIGHT_COLOR)
@@ -108,8 +101,7 @@ export function useSelectionOverlayState({
   const selectionKey = useMemo(() => buildSelectionOverlayKey(selection), [selection])
   const hasSelection = hasTextSelection(selection)
   const isExpanded = mode !== 'closed' && mode !== 'actions'
-  const persistsWithoutSelection =
-    mode === 'note' && Boolean(noteAnnotation || lastAction)
+  const persistsWithoutSelection = mode === 'note' && Boolean(noteAnnotation)
 
   useEffect(() => {
     if (!enabled) {
@@ -148,7 +140,6 @@ export function useSelectionOverlayState({
     enabled,
     hasSelection,
     isExpanded,
-    lastAction,
     noteAnnotation,
     mode,
     persistsWithoutSelection,
@@ -198,8 +189,6 @@ export function useSelectionOverlayState({
     setActionError(null)
     setIsTranslationPending(true)
     setTranslationPreview(null)
-    setLastAction(null)
-
     try {
       const response = await requestSelectionTranslation()
       setTranslationPreview(response)
@@ -214,7 +203,6 @@ export function useSelectionOverlayState({
 
   const openAi = useCallback(() => {
     setActionError(null)
-    setLastAction(null)
     setMode('ai')
   }, [])
 
@@ -225,7 +213,6 @@ export function useSelectionOverlayState({
     }
 
     setActionError(null)
-    setLastAction(null)
     if (noteAnnotation) {
       setMode('note')
       return
@@ -268,35 +255,17 @@ export function useSelectionOverlayState({
     }
 
     setActionError(null)
-    setMode('note')
 
     try {
       if (nextBody) {
         updateNoteBody(noteAnnotation.id, nextBody)
       }
-      setLastAction({
-        kind: 'note',
-        annotation: {
-          ...noteAnnotation,
-          color: noteColor,
-          bodyMarkdown: nextBody || noteAnnotation.bodyMarkdown,
-        },
-      })
-      setNoteAnnotation((current) =>
-        current
-          ? {
-              ...current,
-              color: noteColor,
-              bodyMarkdown: nextBody || current.bodyMarkdown,
-            }
-          : current,
-      )
       setNoteDraft('')
-      onOpenSidebarSection?.('annotations')
+      dismiss()
     } catch (error) {
       setActionError(error instanceof Error ? error.message : 'Note creation failed')
     }
-  }, [noteAnnotation, noteColor, noteDraft, onOpenSidebarSection, updateNoteBody])
+  }, [dismiss, noteAnnotation, noteDraft, updateNoteBody])
 
   const openSidebar = useCallback(
     (section: ReaderWorkspaceSection) => {
@@ -325,7 +294,6 @@ export function useSelectionOverlayState({
     actionError,
     isTranslationPending,
     translationPreview,
-    lastAction,
     noteColor,
     aiPreview,
     isVisible: enabled && hasTextSelection(visibleSelection) && mode !== 'closed',

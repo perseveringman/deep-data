@@ -26,4 +26,9 @@ test('EpubReader does not clear the browser selection immediately after capturin
   )
 
   assert.doesNotMatch(source, /removeAllRanges\?\.\(\)/)
+  assert.match(source, /rendition\.hooks\.content\.register\(/)
+  assert.match(source, /const syncSelection = \(\) =>/)
+  assert.match(source, /contents\.document\.addEventListener\('pointerup', syncSelection\)/)
+  assert.match(source, /contents\.document\.addEventListener\('keyup', syncSelection\)/)
+  assert.match(source, /setSelection\(null\)/)
 })

@@ -1,14 +1,24 @@
 import type { ReaderAnnotation } from './annotations'
 
-const HIGHLIGHT_SELECTOR = 'mark[data-reader-annotation-id]'
+const HIGHLIGHT_SELECTOR = '[data-reader-annotation-id]'
 
 const highlightClassByColor: Record<ReaderAnnotation['color'], string> = {
-  yellow: 'rounded bg-yellow-200/80 px-0.5',
-  green: 'rounded bg-emerald-200/80 px-0.5',
-  blue: 'rounded bg-sky-200/80 px-0.5',
-  pink: 'rounded bg-pink-200/80 px-0.5',
-  purple: 'rounded bg-violet-200/80 px-0.5',
+  yellow: 'rounded bg-yellow-200/80 px-0.5 text-inherit',
+  green: 'rounded bg-emerald-200/80 px-0.5 text-inherit',
+  blue: 'rounded bg-sky-200/80 px-0.5 text-inherit',
+  pink: 'rounded bg-pink-200/80 px-0.5 text-inherit',
+  purple: 'rounded bg-violet-200/80 px-0.5 text-inherit',
 }
+
+const pdfHighlightColorByColor: Record<ReaderAnnotation['color'], string> = {
+  yellow: 'rgba(253, 224, 71, 0.45)',
+  green: 'rgba(110, 231, 183, 0.45)',
+  blue: 'rgba(125, 211, 252, 0.45)',
+  pink: 'rgba(249, 168, 212, 0.45)',
+  purple: 'rgba(196, 181, 253, 0.45)',
+}
+
+type ReaderHighlightRenderVariant = 'default' | 'pdf-text-layer'
 
 function clearReaderHighlights(root: HTMLElement) {
   root.querySelectorAll<HTMLElement>(HIGHLIGHT_SELECTOR).forEach((node) => {
@@ -156,6 +166,7 @@ function wrapHighlightSegment(
   annotation: ReaderAnnotation,
   startOffset: number,
   endOffset: number,
+  variant: ReaderHighlightRenderVariant,
 ) {
   if (!node.parentNode || startOffset >= endOffset) {
     return
@@ -165,9 +176,18 @@ function wrapHighlightSegment(
   const trailingOffset = endOffset - startOffset
   targetNode.splitText(trailingOffset)
 
-  const highlight = document.createElement('mark')
+  const highlight =
+    variant === 'pdf-text-layer'
+      ? document.createElement('span')
+      : document.createElement('mark')
   highlight.dataset.readerAnnotationId = annotation.id
-  highlight.className = highlightClassByColor[annotation.color]
+  if (variant === 'pdf-text-layer') {
+    highlight.className = 'highlight appended reader-pdf-annotation-highlight'
+    highlight.style.setProperty('--highlight-bg-color', pdfHighlightColorByColor[annotation.color])
+    highlight.style.setProperty('--highlight-selected-bg-color', pdfHighlightColorByColor[annotation.color])
+  } else {
+    highlight.className = highlightClassByColor[annotation.color]
+  }
   highlight.textContent = targetNode.textContent
 
   targetNode.parentNode?.replaceChild(highlight, targetNode)
@@ -177,6 +197,7 @@ function applyHighlightMatch(
   segments: HighlightTextSegment[],
   annotation: ReaderAnnotation,
   match: HighlightMatchRange,
+  variant: ReaderHighlightRenderVariant,
 ) {
   segments
     .filter((segment) => segment.end > match.start && segment.start < match.end)
@@ -184,11 +205,15 @@ function applyHighlightMatch(
     .forEach((segment) => {
       const localStart = Math.max(0, match.start - segment.start)
       const localEnd = Math.min(segment.text.length, match.end - segment.start)
-      wrapHighlightSegment(segment.node, annotation, localStart, localEnd)
+      wrapHighlightSegment(segment.node, annotation, localStart, localEnd, variant)
     })
 }
 
-export function renderReaderQuoteHighlights(root: HTMLElement | null, annotations: ReaderAnnotation[]) {
+export function renderReaderQuoteHighlights(
+  root: HTMLElement | null,
+  annotations: ReaderAnnotation[],
+  { variant = 'default' }: { variant?: ReaderHighlightRenderVariant } = {},
+) {
   if (!root) return
 
   clearReaderHighlights(root)
@@ -210,6 +235,10 @@ export function renderReaderQuoteHighlights(root: HTMLElement | null, annotation
     .sort((a, b) => b.match.start - a.match.start)
 
   plannedHighlights.forEach(({ annotation, match }) => {
-    applyHighlightMatch(segments, annotation, match)
+    applyHighlightMatch(segments, annotation, match, variant)
   })
+}
+
+export function renderPdfQuoteHighlights(root: HTMLElement | null, annotations: ReaderAnnotation[]) {
+  renderReaderQuoteHighlights(root, annotations, { variant: 'pdf-text-layer' })
 }
