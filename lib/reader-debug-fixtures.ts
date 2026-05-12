@@ -1,9 +1,9 @@
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 
-import type { ReaderDocumentIdentity } from '../components/reader-platform/core.ts'
-import type { ContentItem } from './mock-data.ts'
-import { contentItems } from './mock-data.ts'
+import type { ReaderDocumentIdentity } from '../components/reader-platform/core'
+import type { ContentItem } from './types'
+import { contentItems } from './__mocks__'
 
 const CONTENT_DIR = path.join(process.cwd(), 'content')
 

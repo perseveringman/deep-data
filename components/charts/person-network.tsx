@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Person, PersonRelation } from '@/lib/mock-data'
+import type { Person, PersonRelation } from '@/lib/types'
 
 interface PersonNetworkProps {
   persons: Person[]

@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { opinions } from '@/lib/mock-data'
+import type { Opinion } from '@/lib/data-loaders/common'
 import { formatDistanceToNow } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
 
@@ -30,10 +30,11 @@ const getSentimentLabel = (sentiment: 'positive' | 'negative' | 'neutral') => {
 interface OpinionTimelineProps {
   limit?: number
   compact?: boolean
+  data?: Opinion[]
 }
 
-export function OpinionTimeline({ limit = 5, compact = false }: OpinionTimelineProps) {
-  const displayOpinions = opinions.slice(0, limit)
+export function OpinionTimeline({ limit = 5, compact = false, data = [] }: OpinionTimelineProps) {
+  const displayOpinions = data.slice(0, limit)
 
   if (compact) {
     return (

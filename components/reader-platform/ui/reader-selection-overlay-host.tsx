@@ -11,6 +11,7 @@ import type { ReaderCapabilities, ReaderSelection } from '@/components/reader-pl
 import { useSelectionOverlayState } from '@/components/reader-platform/hooks'
 import { resolveSelectionOverlayPlacement } from '@/components/reader-platform/selection-overlay'
 import type { TranslationResponse } from '@/components/reader-platform/translation'
+import type { ArtifactItem } from '@/lib/api'
 
 import {
   getReaderWorkspaceRootId,
@@ -36,7 +37,8 @@ interface ReaderSelectionOverlayHostProps {
   selectionMenuEnabled?: boolean
   reduceMotion?: boolean
   canTranslate: boolean
-  requestSelectionTranslation: () => Promise<TranslationResponse>
+  requestSelectionTranslation: (targetLang?: string) => Promise<TranslationResponse>
+  requestAiAnalysis?: () => Promise<ArtifactItem>
   createHighlight: (color?: ReaderHighlightColor) => ReaderAnnotation
   updateNoteBody: (annotationId: string, bodyMarkdown: string) => void
   updateHighlightColor: (annotationId: string, color: ReaderHighlightColor) => void
@@ -52,6 +54,7 @@ export function ReaderSelectionOverlayHost({
   reduceMotion = false,
   canTranslate,
   requestSelectionTranslation,
+  requestAiAnalysis,
   createHighlight,
   updateNoteBody,
   updateHighlightColor,
@@ -93,6 +96,7 @@ export function ReaderSelectionOverlayHost({
     analysisContext,
     canTranslate,
     requestSelectionTranslation,
+    requestAiAnalysis,
     createHighlight,
     updateNoteBody,
     updateHighlightColor,
@@ -102,10 +106,12 @@ export function ReaderSelectionOverlayHost({
     actionError,
     aiDisabledReason,
     aiPreview,
+    aiArtifactText,
     beginSticky,
     dismiss,
     endSticky,
     isTranslationPending,
+    isAiPending,
     isVisible,
     mode,
     noteDraft,
@@ -209,7 +215,7 @@ export function ReaderSelectionOverlayHost({
       ) {
         if (translateDisabledReason) return
         event.preventDefault()
-        void openTranslate()
+         void openTranslate('zh-CN')
       }
 
       if (
@@ -220,7 +226,7 @@ export function ReaderSelectionOverlayHost({
       ) {
         if (aiDisabledReason) return
         event.preventDefault()
-        openAi()
+        void openAi()
       }
     }
 
@@ -255,7 +261,9 @@ export function ReaderSelectionOverlayHost({
               actionError={actionError}
               isTranslationPending={isTranslationPending}
               translationPreview={translationPreview}
-              aiPreview={aiPreview}
+               aiPreview={aiPreview}
+               aiArtifactText={aiArtifactText}
+               isAiPending={isAiPending}
               noteDraft={noteDraft}
               noteColor={noteColor}
               onNoteDraftChange={setNoteDraft}
@@ -271,10 +279,15 @@ export function ReaderSelectionOverlayHost({
             <SelectionActionBar
               translateDisabledReason={translateDisabledReason}
               aiDisabledReason={aiDisabledReason}
-              onTranslate={() => {
-                void openTranslate()
+               onTranslateZh={() => {
+                 void openTranslate('zh-CN')
+               }}
+               onTranslateEn={() => {
+                 void openTranslate('en')
+               }}
+              onAi={() => {
+                void openAi()
               }}
-              onAi={openAi}
               onNote={openNoteComposer}
             />
           )}

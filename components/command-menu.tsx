@@ -16,7 +16,14 @@ import {
   Tags,
   Library,
 } from 'lucide-react'
-import { channels, keywords, persons, level1Tags, level2Tags, contentItems } from '@/lib/mock-data'
+import type { Channel, ContentItem, Keyword, Person, Tag } from '@/lib/types'
+
+const channels: Channel[] = []
+const keywords: Keyword[] = []
+const persons: Person[] = []
+const level1Tags: Tag[] = []
+const level2Tags: Tag[] = []
+const contentItems: ContentItem[] = []
 
 export function CommandMenu() {
   const [open, setOpen] = React.useState(false)

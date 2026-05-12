@@ -16,8 +16,15 @@ export async function GET(
     const res = await fetch(url.toString(), {
       headers: getReadApiHeaders(),
     })
-    const data = await res.json()
-    return NextResponse.json(data, { status: res.status })
+    const contentType = res.headers.get('content-type') || ''
+    if (contentType.includes('application/json')) {
+      const data = await res.json()
+      return NextResponse.json(data, { status: res.status })
+    }
+    return new NextResponse(await res.arrayBuffer(), {
+      status: res.status,
+      headers: { 'content-type': contentType || 'text/plain; charset=utf-8' },
+    })
   } catch {
     return NextResponse.json({ error: 'Upstream unreachable' }, { status: 502 })
   }
@@ -39,9 +46,9 @@ export async function POST(
   try {
     const res = await fetch(url.toString(), {
       method: 'POST',
-      headers: getUploadApiHeaders({
+      headers: getReadApiHeaders(getUploadApiHeaders({
         'Content-Type': contentType,
-      }),
+      })),
       body,
     })
     const data = await res.json()

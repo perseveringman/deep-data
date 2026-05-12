@@ -10,27 +10,24 @@ import {
   ResponsiveContainer,
   Legend,
 } from 'recharts'
-import { topicTrends } from '@/lib/mock-data'
-
-// 将数据转换为图表格式
-const chartData = topicTrends[0].data.map((item, index) => ({
-  date: item.date.slice(5), // 只显示月-日
-  'AI 大模型': topicTrends[0].data[index].mentions,
-  '创业融资': topicTrends[1].data[index].mentions,
-  '量子计算': topicTrends[2].data[index].mentions,
-}))
-
-const colors = {
-  'AI 大模型': 'var(--chart-1)',
-  '创业融资': 'var(--chart-2)',
-  '量子计算': 'var(--chart-3)',
-}
+import type { TopicTrend } from '@/lib/data-loaders/common'
 
 interface TopicTrendChartProps {
   compact?: boolean
+  data?: TopicTrend[]
 }
 
-export function TopicTrendChart({ compact = false }: TopicTrendChartProps) {
+export function TopicTrendChart({ compact = false, data = [] }: TopicTrendChartProps) {
+  const displayTrends = data.slice(0, 3)
+  const chartData = displayTrends[0]?.data.map((item, index) => {
+    const row: Record<string, string | number> = { date: item.date.slice(5) }
+    displayTrends.forEach((trend) => {
+      row[trend.topic] = trend.data[index]?.mentions || 0
+    })
+    return row
+  }) || []
+  const colors = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)']
+
   return (
     <div className={compact ? "h-full w-full" : "h-[300px] w-full"}>
       <ResponsiveContainer width="100%" height="100%">
@@ -66,30 +63,17 @@ export function TopicTrendChart({ compact = false }: TopicTrendChartProps) {
               wrapperStyle={{ fontSize: '11px' }}
             />
           )}
-          <Line
-            type="monotone"
-            dataKey="AI 大模型"
-            stroke={colors['AI 大模型']}
-            strokeWidth={1.5}
-            dot={false}
-            activeDot={{ r: 3 }}
-          />
-          <Line
-            type="monotone"
-            dataKey="创业融资"
-            stroke={colors['创业融资']}
-            strokeWidth={1.5}
-            dot={false}
-            activeDot={{ r: 3 }}
-          />
-          <Line
-            type="monotone"
-            dataKey="量子计算"
-            stroke={colors['量子计算']}
-            strokeWidth={1.5}
-            dot={false}
-            activeDot={{ r: 3 }}
-          />
+          {displayTrends.map((trend, index) => (
+            <Line
+              key={trend.topic}
+              type="monotone"
+              dataKey={trend.topic}
+              stroke={colors[index]}
+              strokeWidth={1.5}
+              dot={false}
+              activeDot={{ r: 3 }}
+            />
+          ))}
         </LineChart>
       </ResponsiveContainer>
     </div>

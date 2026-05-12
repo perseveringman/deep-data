@@ -6,14 +6,11 @@ import { format } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
 import { Youtube, Podcast, Clock, Eye, ThumbsUp, Play, LayoutGrid, List, FileText, Tag, ChevronDown, X, Loader2 } from 'lucide-react'
 import { SidebarTrigger } from '@/components/ui/sidebar'
-import { contentItems as mockContentItems, type ContentItem } from '@/lib/mock-data'
-import { docToContentItem } from '@/lib/api'
+import type { ContentItem } from '@/lib/types'
+import { loadContentItems } from '@/lib/data-loaders/contents'
 
 type FilterType = 'all' | 'youtube' | 'podcast'
 type ViewType = 'grid' | 'list'
-
-// Proxy through Next.js API route to avoid CORS / exposing key
-const PODADMIN_API = ''
 
 export default function ContentsPage() {
   const [typeFilter, setTypeFilter] = useState<FilterType>('all')
@@ -22,37 +19,38 @@ export default function ContentsPage() {
   const [showChannelDropdown, setShowChannelDropdown] = useState(false)
 
   // Remote data state
-  const [contentItems, setContentItems] = useState<ContentItem[]>(mockContentItems)
+  const [contentItems, setContentItems] = useState<ContentItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   useEffect(() => {
+    let cancelled = false
+
     async function fetchDocs() {
       try {
-        // Fetch podcast + youtube documents from podadmin
-        const sourceTypes = typeFilter === 'all'
-          ? ['podcast', 'youtube']
-          : [typeFilter]
-
-        const results = await Promise.all(
-          sourceTypes.map(st =>
-            fetch(`${PODADMIN_API}/api/podadmin/documents?source_type=${st}&limit=100`)
-              .then(r => r.ok ? r.json() : null)
-          )
-        )
-
-        const docs = results.flatMap(r => r?.items || [])
-
-        if (docs.length > 0) {
-          const mapped: ContentItem[] = docs.map((doc: any) => docToContentItem(doc))
-          setContentItems(mapped)
+        const items = await loadContentItems(typeFilter)
+        if (!cancelled) {
+          setContentItems(items)
+          setLoadError(null)
         }
-      } catch {
-        // Fall back to mock data (already set as default)
+      } catch (error) {
+        if (!cancelled) {
+          setContentItems([])
+          setLoadError(error instanceof Error ? error.message : '内容加载失败')
+        }
       } finally {
-        setLoading(false)
+        if (!cancelled) {
+          setLoading(false)
+        }
       }
     }
+
+    setLoading(true)
     fetchDocs()
+
+    return () => {
+      cancelled = true
+    }
   }, [typeFilter])
 
   // 获取所有频道列表，按类型分组
@@ -153,6 +151,17 @@ export default function ContentsPage() {
       {/* Main Content */}
       <div className="px-4 py-3">
         {/* Filters Row */}
+        {loading && contentItems.length === 0 && (
+          <div className="mb-3 flex items-center gap-2 rounded border border-border p-3 text-xs text-muted-foreground">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            正在加载真实内容…
+          </div>
+        )}
+        {loadError && (
+          <div className="mb-3 rounded border border-destructive/40 p-3 text-xs text-destructive">
+            {loadError}
+          </div>
+        )}
         <div className="flex flex-wrap items-center gap-3 border-b border-border pb-3">
           {/* Type Filter Tabs */}
           <div className="flex gap-1">

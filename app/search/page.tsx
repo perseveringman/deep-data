@@ -3,22 +3,15 @@
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { SidebarTrigger } from '@/components/ui/sidebar'
-import { getDocumentRouteId } from '@/lib/api'
-import { searchMockResults, channels, keywords, opinions } from '@/lib/mock-data'
 import { Hash, User, MessageSquare, TrendingUp, Radio, Search, Loader2 } from 'lucide-react'
 import { Suspense, useState, useEffect } from 'react'
-
-// Proxy through Next.js API route to avoid CORS / exposing key
-const PODADMIN_API = ''
-
-interface SearchResult {
-  id: string
-  type: string
-  title: string
-  snippet: string
-  relevance: number
-  channelId?: string
-}
+import {
+  loadSearchKeywords,
+  loadSearchOpinions,
+  loadSearchResults,
+  type SearchResult,
+} from '@/lib/data-loaders/search'
+import type { Keyword, Opinion } from '@/lib/types'
 
 function SearchContent() {
   const searchParams = useSearchParams()
@@ -26,48 +19,42 @@ function SearchContent() {
   const type = searchParams.get('type') || 'all'
 
   const [filteredResults, setFilteredResults] = useState<SearchResult[]>([])
+  const [keywords, setKeywords] = useState<Keyword[]>([])
+  const [opinions, setOpinions] = useState<Opinion[]>([])
   const [loading, setLoading] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!query) {
-      setFilteredResults(searchMockResults)
-      return
-    }
-
+    let cancelled = false
     async function doSearch() {
       setLoading(true)
+      setLoadError(null)
       try {
-        const res = await fetch(
-          `${PODADMIN_API}/api/podadmin/search?q=${encodeURIComponent(query)}&type=document&page_size=30`
-        )
-        if (res.ok) {
-          const data = await res.json()
-          const items = (data.items || []).map((doc: any, idx: number) => ({
-            id: doc.doc_id ? getDocumentRouteId(doc) : String(idx),
-            type: doc.source_type === 'youtube' ? 'channel' : 'topic',
-            title: doc.title || '(无标题)',
-            snippet: doc.summary_excerpt || doc.podcast_title || '',
-            relevance: Math.max(50, 100 - idx * 3),
-            channelId: doc.source ? `${doc.source_type}-${doc.source}` : undefined,
-          }))
-          if (items.length > 0) {
-            setFilteredResults(items)
-            setLoading(false)
-            return
-          }
+        const [results, searchKeywords, searchOpinions] = await Promise.all([
+          loadSearchResults(query),
+          loadSearchKeywords(),
+          loadSearchOpinions(),
+        ])
+        if (!cancelled) {
+          setFilteredResults(results)
+          setKeywords(searchKeywords)
+          setOpinions(searchOpinions)
         }
-      } catch { /* fall through to mock */ }
-
-      // Fall back to local mock filter
-      const mockResults = searchMockResults.filter(
-        (r) =>
-          r.title.toLowerCase().includes(query.toLowerCase()) ||
-          r.snippet.toLowerCase().includes(query.toLowerCase())
-      )
-      setFilteredResults(mockResults)
-      setLoading(false)
+      } catch (error) {
+        if (!cancelled) {
+          setFilteredResults([])
+          setKeywords([])
+          setOpinions([])
+          setLoadError(error instanceof Error ? error.message : '搜索服务不可用')
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
     }
     doSearch()
+    return () => {
+      cancelled = true
+    }
   }, [query])
 
   // 如果是查看所有观点
@@ -163,8 +150,18 @@ function SearchContent() {
                   搜索 <span className="font-medium text-foreground">{`"${query}"`}</span> 的结果
                 </p>
               )}
+              {loadError && (
+                <div className="mb-3 rounded border border-destructive/40 p-3 text-xs text-destructive">
+                  {loadError}
+                </div>
+              )}
 
-              {filteredResults.length > 0 ? (
+              {loading ? (
+                <div className="flex items-center gap-2 py-8 text-xs text-muted-foreground">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  正在搜索真实内容…
+                </div>
+              ) : filteredResults.length > 0 ? (
                 <div className="space-y-2">
                   {filteredResults.map((result) => (
                     <Link
@@ -172,7 +169,9 @@ function SearchContent() {
                       href={
                         result.type === 'channel' && result.channelId
                           ? `/channels/${result.channelId}`
-                          : `/search?q=${encodeURIComponent(result.title)}`
+                          : result.contentId
+                            ? `/contents/${encodeURIComponent(result.contentId)}`
+                            : `/search?q=${encodeURIComponent(result.title)}`
                       }
                       className="flex items-start gap-2 border border-border p-2 transition-colors hover:border-foreground"
                     >

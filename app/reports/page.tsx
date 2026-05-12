@@ -1,9 +1,12 @@
 import Link from 'next/link'
 import { SidebarTrigger } from '@/components/ui/sidebar'
-import { dailyReports } from '@/lib/mock-data'
+import { loadReports } from '@/lib/data-loaders/reports'
 import { ArrowRight, Calendar, FileText, TrendingUp, AlertCircle, ArrowUpRight, ArrowDownRight } from 'lucide-react'
 
-export default function ReportsPage() {
+export const dynamic = 'force-dynamic'
+
+export default async function ReportsPage() {
+  const dailyReports = await loadReports()
   return (
     <div className="min-h-screen">
       {/* Header */}

@@ -1,32 +1,12 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
-import { getContentById, type ContentItem } from '@/lib/mock-data'
 import { YouTubeReader } from '@/components/readers/youtube-reader'
 import { PodcastReader } from '@/components/readers/podcast-reader'
 import { SidebarTrigger } from '@/components/ui/sidebar'
-import { docToContentItem, getDocument, getDocumentRaw } from '@/lib/api'
-import fs from 'fs'
-import path from 'path'
+import { loadContentDetail } from '@/lib/data-loaders/content-detail'
 
-async function fetchFromPodAdmin(id: string): Promise<{ content: ContentItem; markdown: string } | null> {
-  try {
-    const doc = await getDocument(id, true)
-    const content = docToContentItem(doc)
-
-    // Use inline body if available; otherwise fetch raw
-    let markdown = doc.body || ''
-    if (!markdown) {
-      try {
-        markdown = await getDocumentRaw(id)
-      } catch { /* ignore */ }
-    }
-
-    return { content, markdown }
-  } catch {
-    return null
-  }
-}
+export const dynamic = 'force-dynamic'
 
 export default async function ContentDetailPage({
   params,
@@ -35,31 +15,12 @@ export default async function ContentDetailPage({
 }) {
   const { id } = await params
 
-  // Try podadmin API first
-  const remote = await fetchFromPodAdmin(id)
+  const detail = await loadContentDetail(id)
 
-  let content: ContentItem | null = null
-  let markdownContent = ''
-
-  if (remote) {
-    content = remote.content
-    markdownContent = remote.markdown || '内容加载中…'
-  } else {
-    // Fall back to local mock data
-    content = getContentById(id)
-    if (content) {
-      try {
-        const filePath = path.join(process.cwd(), 'content', content.contentFile.replace('/content/', ''))
-        markdownContent = fs.readFileSync(filePath, 'utf-8')
-      } catch {
-        markdownContent = '内容加载失败'
-      }
-    }
-  }
-
-  if (!content) {
+  if (!detail) {
     notFound()
   }
+  const { content, markdown: markdownContent } = detail
 
   return (
     <>

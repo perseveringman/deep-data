@@ -404,7 +404,8 @@ export function EpubReader({
           selectionMenuEnabled={resolvedPreferences.behavior.selectionMenu !== false}
           reduceMotion={resolvedPreferences.behavior.reduceMotion === true}
           canTranslate={runtime.translation.canTranslate}
-          requestSelectionTranslation={() => runtime.translation.requestTranslation('selection')}
+          requestSelectionTranslation={(targetLang) => runtime.translation.requestTranslation('selection', targetLang)}
+          requestAiAnalysis={() => runtime.analysis.requestAnalysis('summary')}
           createHighlight={(color = 'yellow') => runtime.createAnnotationFromSelection(color)}
           updateNoteBody={runtime.updateAnnotationBody}
           updateHighlightColor={runtime.updateAnnotationColor}
@@ -431,6 +432,12 @@ export function EpubReader({
           translationResponse={runtime.translation.lastResponse}
           translationError={runtime.translation.error}
           analysisContext={runtime.analysisContext}
+          analysisArtifact={runtime.analysis.artifact}
+          analysisError={runtime.analysis.error}
+          isAnalyzing={runtime.analysis.isAnalyzing}
+          onRunAnalysis={() => {
+            void runtime.analysis.requestAnalysis('summary')
+          }}
           onProviderChange={runtime.translation.setProvider}
           onTargetLangChange={runtime.translation.setTargetLang}
           onTranslate={(scope) => {

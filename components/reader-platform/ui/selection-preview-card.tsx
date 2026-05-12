@@ -21,8 +21,10 @@ interface SelectionPreviewCardProps {
   selectionText: string
   actionError?: string | null
   isTranslationPending: boolean
+  isAiPending?: boolean
   translationPreview?: TranslationResponse | null
   aiPreview?: SelectionAiPreview | null
+  aiArtifactText?: string | null
   noteDraft: string
   noteColor: ReaderHighlightColor
   onNoteDraftChange: (value: string) => void
@@ -56,8 +58,10 @@ export function SelectionPreviewCard({
   selectionText,
   actionError,
   isTranslationPending,
+  isAiPending = false,
   translationPreview,
   aiPreview,
+  aiArtifactText,
   noteDraft,
   noteColor,
   onNoteDraftChange,
@@ -152,7 +156,18 @@ export function SelectionPreviewCard({
 
       {mode === 'ai' ? (
         <div className="mt-3 space-y-3">
-          {aiPreview ? (
+          {isAiPending ? (
+            <p className="text-sm text-muted-foreground">正在向 DataHub 请求选区分析…</p>
+          ) : aiArtifactText ? (
+            <>
+              <div className="rounded-lg border bg-muted/20 px-3 py-2">
+                <p className="max-h-48 overflow-auto whitespace-pre-wrap text-sm">{aiArtifactText}</p>
+              </div>
+              <Button type="button" size="sm" variant="outline" onClick={() => onOpenSidebar('ai')}>
+                在右侧展开 AI 上下文
+              </Button>
+            </>
+          ) : aiPreview ? (
             <>
               <div className="rounded-lg border bg-muted/20 px-3 py-2">
                 <p className="text-sm">{aiPreview.summary}</p>

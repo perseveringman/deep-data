@@ -1,14 +1,29 @@
 'use client'
 
+import dynamic from 'next/dynamic'
 import { Bot, FileText, FileType2, Headphones, Video } from 'lucide-react'
 
-import { EpubReader, MarkdownReader, PdfReader } from '@/components/document-reader'
+import { MarkdownReader } from '@/components/document-reader/markdown/markdown-reader'
 import type { TranslationExecutor } from '@/components/reader-platform'
 import { PodcastReader } from '@/components/readers/podcast-reader'
 import { YouTubeReader } from '@/components/readers/youtube-reader'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { ReaderDebugFixture } from '@/lib/reader-debug-fixtures'
+
+const PdfReader = dynamic(
+  () => import('@/components/document-reader/pdf/pdf-reader').then((module) => module.PdfReader),
+  {
+    ssr: false,
+  },
+)
+
+const EpubReader = dynamic(
+  () => import('@/components/document-reader/epub/epub-reader').then((module) => module.EpubReader),
+  {
+    ssr: false,
+  },
+)
 
 const debugTranslationExecutor: TranslationExecutor = async (request) => {
   return {

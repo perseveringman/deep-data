@@ -1,15 +1,16 @@
 'use client'
 
-import { keywords } from '@/lib/mock-data'
+import type { Keyword } from '@/lib/data-loaders/common'
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react'
 
 interface KeywordCloudProps {
   compact?: boolean
+  data?: Keyword[]
 }
 
-export function KeywordCloud({ compact = false }: KeywordCloudProps) {
+export function KeywordCloud({ compact = false, data = [] }: KeywordCloudProps) {
   // 按权重排序
-  const sortedKeywords = [...keywords].sort((a, b) => b.weight - a.weight)
+  const sortedKeywords = [...data].sort((a, b) => b.weight - a.weight)
   const displayKeywords = compact ? sortedKeywords.slice(0, 12) : sortedKeywords
 
   const getTrendIcon = (trend: 'up' | 'down' | 'stable') => {

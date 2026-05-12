@@ -1,8 +1,10 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { SidebarTrigger } from '@/components/ui/sidebar'
-import { getDeepReportDetail, deepReports, channels } from '@/lib/mock-data'
+import { loadDeepReportDetail } from '@/lib/data-loaders/deep-reports'
 import { ArrowLeft, Clock, Calendar, Radio, BookOpen, ArrowRight } from 'lucide-react'
+
+export const dynamic = 'force-dynamic'
 
 interface DeepReportDetailPageProps {
   params: Promise<{ id: string }>
@@ -25,7 +27,7 @@ const getCategoryLabel = (category: string) => {
 
 export default async function DeepReportDetailPage({ params }: DeepReportDetailPageProps) {
   const { id } = await params
-  const report = getDeepReportDetail(id)
+  const { report, reports: deepReports } = await loadDeepReportDetail(id)
 
   if (!report) {
     notFound()
@@ -35,9 +37,7 @@ export default async function DeepReportDetailPage({ params }: DeepReportDetailP
     .map((rid) => deepReports.find((r) => r.id === rid))
     .filter(Boolean)
 
-  const relatedChannels = report.relatedChannels
-    .map((cid) => channels.find((c) => c.id === cid))
-    .filter(Boolean)
+  const relatedChannels: { id: string; name: string }[] = report.relatedChannels.map((cid) => ({ id: cid, name: cid }))
 
   return (
     <div className="min-h-screen">

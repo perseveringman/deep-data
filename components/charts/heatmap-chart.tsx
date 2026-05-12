@@ -1,13 +1,16 @@
 'use client'
 
-import { crossAnalysisData } from '@/lib/mock-data'
+import type { CrossAnalysisData } from '@/lib/data-loaders/common'
 
 interface HeatmapChartProps {
   compact?: boolean
+  data?: CrossAnalysisData
 }
 
-export function HeatmapChart({ compact = false }: HeatmapChartProps) {
-  const { channels, matrix } = crossAnalysisData
+const emptyCrossAnalysisData: CrossAnalysisData = { channels: [], matrix: [] }
+
+export function HeatmapChart({ compact = false, data = emptyCrossAnalysisData }: HeatmapChartProps) {
+  const { channels, matrix } = data
 
   const getColor = (value: number) => {
     // 使用灰度色阶

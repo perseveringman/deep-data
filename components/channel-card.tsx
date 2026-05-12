@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import type { Channel } from '@/lib/mock-data'
+import type { Channel } from '@/lib/types'
 import { Youtube, Podcast } from 'lucide-react'
 
 interface ChannelCardProps {

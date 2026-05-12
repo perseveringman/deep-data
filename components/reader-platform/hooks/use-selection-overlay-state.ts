@@ -16,6 +16,7 @@ import {
   type SelectionOverlayMode,
 } from '@/components/reader-platform/selection-overlay'
 import type { TranslationResponse } from '@/components/reader-platform/translation'
+import type { ArtifactItem } from '@/lib/api'
 
 import type { ReaderWorkspaceSection } from '../ui/reader-workspace-ids'
 
@@ -27,7 +28,8 @@ interface UseSelectionOverlayStateOptions {
   selection?: ReaderSelection | null
   analysisContext?: ReaderAnalysisContext | null
   canTranslate: boolean
-  requestSelectionTranslation: () => Promise<TranslationResponse>
+  requestSelectionTranslation: (targetLang?: string) => Promise<TranslationResponse>
+  requestAiAnalysis?: () => Promise<ArtifactItem>
   createHighlight: (color?: ReaderHighlightColor) => ReaderAnnotation
   updateNoteBody: (annotationId: string, bodyMarkdown: string) => void
   updateHighlightColor: (annotationId: string, color: ReaderHighlightColor) => void
@@ -41,6 +43,7 @@ export function useSelectionOverlayState({
   analysisContext,
   canTranslate,
   requestSelectionTranslation,
+  requestAiAnalysis,
   createHighlight,
   updateNoteBody,
   updateHighlightColor,
@@ -54,6 +57,8 @@ export function useSelectionOverlayState({
   const [actionError, setActionError] = useState<string | null>(null)
   const [isTranslationPending, setIsTranslationPending] = useState(false)
   const [translationPreview, setTranslationPreview] = useState<TranslationResponse | null>(null)
+  const [aiArtifactText, setAiArtifactText] = useState<string | null>(null)
+  const [isAiPending, setIsAiPending] = useState(false)
   const [noteAnnotation, setNoteAnnotation] = useState<ReaderAnnotation | null>(null)
   const [noteColor, setNoteColor] = useState<ReaderHighlightColor>(DEFAULT_HIGHLIGHT_COLOR)
 
@@ -71,6 +76,8 @@ export function useSelectionOverlayState({
     setActionError(null)
     setIsTranslationPending(false)
     setTranslationPreview(null)
+    setAiArtifactText(null)
+    setIsAiPending(false)
     setNoteDraft('')
     setNoteAnnotation(null)
     setNoteColor(DEFAULT_HIGHLIGHT_COLOR)
@@ -173,7 +180,7 @@ export function useSelectionOverlayState({
     setMode('actions')
   }, [])
 
-  const openTranslate = useCallback(async () => {
+  const openTranslate = useCallback(async (targetLang?: string) => {
     if (!hasTextSelection(visibleSelection)) {
       setActionError('请先选择文本。')
       return
@@ -190,7 +197,7 @@ export function useSelectionOverlayState({
     setIsTranslationPending(true)
     setTranslationPreview(null)
     try {
-      const response = await requestSelectionTranslation()
+      const response = await requestSelectionTranslation(targetLang)
       setTranslationPreview(response)
     } catch (error) {
       setActionError(
@@ -201,10 +208,22 @@ export function useSelectionOverlayState({
     }
   }, [canTranslate, requestSelectionTranslation, visibleSelection])
 
-  const openAi = useCallback(() => {
+  const openAi = useCallback(async () => {
     setActionError(null)
     setMode('ai')
-  }, [])
+    if (!requestAiAnalysis) return
+
+    setIsAiPending(true)
+    setAiArtifactText(null)
+    try {
+      const artifact = await requestAiAnalysis()
+      setAiArtifactText(artifact.body || artifact.summary || artifact.title || 'DataHub 分析已完成。')
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'AI analysis failed')
+    } finally {
+      setIsAiPending(false)
+    }
+  }, [requestAiAnalysis])
 
   const openNoteComposer = useCallback(() => {
     if (!hasTextSelection(visibleSelection)) {
@@ -296,6 +315,8 @@ export function useSelectionOverlayState({
     translationPreview,
     noteColor,
     aiPreview,
+    aiArtifactText,
+    isAiPending,
     isVisible: enabled && hasTextSelection(visibleSelection) && mode !== 'closed',
     translateDisabledReason,
     aiDisabledReason,

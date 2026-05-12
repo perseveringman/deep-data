@@ -2,79 +2,12 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import { EngagementChart } from '@/components/charts/engagement-chart'
-import { getChannelDetail, opinions, type ChannelDetail } from '@/lib/mock-data'
-import { getDocumentRouteId, getReadApiHeaders, PODADMIN_API_BASE } from '@/lib/api'
+import { loadChannelDetail } from '@/lib/data-loaders/channel-detail'
 import { ArrowLeft, Youtube, Podcast, ExternalLink, Play, Clock } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
 
-async function fetchChannelFromAPI(id: string): Promise<ChannelDetail | null> {
-  try {
-    // id format from channels page: "podcast-sourceName" or "youtube-sourceName"
-    const parts = id.split('-')
-    const sourceType = parts[0]
-    const source = parts.slice(1).join('-')
-
-    // Fetch documents for this source to build channel detail
-    const res = await fetch(
-      `${PODADMIN_API_BASE}/api/v1/documents?source_type=${sourceType}&source=${encodeURIComponent(source)}&limit=20`,
-      { headers: getReadApiHeaders(), next: { revalidate: 60 } }
-    )
-    if (!res.ok) return null
-    const data = await res.json()
-    const docs = data.items || []
-    if (docs.length === 0) return null
-
-    // Extract tags distribution
-    const tagCounts: Record<string, number> = {}
-    docs.forEach((d: any) => {
-      (d.tags || []).forEach((t: string) => {
-        tagCounts[t] = (tagCounts[t] || 0) + 1
-      })
-    })
-    const topics = Object.entries(tagCounts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 10)
-      .map(([name, count]) => ({ name, count }))
-
-    // Map recent docs to recentVideos
-    const recentVideos = docs.slice(0, 5).map((d: any) => ({
-      id: getDocumentRouteId(d),
-      title: d.title || '',
-      publishedAt: d.published_at ? d.published_at.slice(0, 10) : '',
-      views: 0,
-      duration: d.duration_seconds
-        ? `${Math.floor(d.duration_seconds / 60)}:${String(d.duration_seconds % 60).padStart(2, '0')}`
-        : '',
-      topics: (d.tags || []).slice(0, 3),
-    }))
-
-    // Fetch total count from sources endpoint
-    const srcRes = await fetch(
-      `${PODADMIN_API_BASE}/api/v1/sources?source_type=${sourceType}`,
-      { headers: getReadApiHeaders(), next: { revalidate: 60 } }
-    )
-    const srcData = srcRes.ok ? await srcRes.json() : { sources: [] }
-    const matchedSource = (srcData.sources || []).find((s: any) => s.source === source)
-    const totalCount = matchedSource?.count || docs.length
-
-    return {
-      id,
-      name: docs[0]?.podcast_title || source || sourceType,
-      platform: sourceType === 'youtube' ? 'youtube' : 'podcast',
-      description: '',
-      subscriberCount: 0,
-      videoCount: totalCount,
-      tags: topics.slice(0, 5).map(t => t.name),
-      lastUpdated: docs[0]?.published_at?.slice(0, 10) || '',
-      topics,
-      recentVideos,
-      engagementData: [],
-    }
-  } catch {
-    return null
-  }
-}
+export const dynamic = 'force-dynamic'
 
 interface ChannelDetailPageProps {
   params: Promise<{ id: string }>
@@ -83,17 +16,13 @@ interface ChannelDetailPageProps {
 export default async function ChannelDetailPage({ params }: ChannelDetailPageProps) {
   const { id } = await params
 
-  // Try podadmin API first, then fall back to mock data
-  let channel = await fetchChannelFromAPI(id)
-  if (!channel) {
-    channel = getChannelDetail(id) as ChannelDetail | null
-  }
+  const channel = await loadChannelDetail(id)
 
   if (!channel) {
     notFound()
   }
 
-  const channelOpinions = opinions.filter((op) => op.channelId === id)
+  const channelOpinions: { id: string; content: string; topic: string; timestamp: string }[] = []
 
   const formatNumber = (num: number) => {
     if (num >= 1000000) {

@@ -5,9 +5,12 @@ import { TopicTrendChart } from '@/components/charts/topic-trend-chart'
 import { KeywordCloud } from '@/components/charts/keyword-cloud'
 import { OpinionTimeline } from '@/components/charts/opinion-timeline'
 import { ChannelCard } from '@/components/channel-card'
-import { channels, dailyReports, deepReports, opinions } from '@/lib/mock-data'
+import { loadHomePageData } from '@/lib/data-loaders/home'
 
-export default function DashboardPage() {
+export const dynamic = 'force-dynamic'
+
+export default async function DashboardPage() {
+  const { channels, dailyReports, deepReports, keywords, opinions, opinionTimeline, topicTrends } = await loadHomePageData()
   const latestReport = dailyReports[0]
   const featuredDeepReport = deepReports.find(r => r.status === 'featured') || deepReports[0]
   const recentOpinions = opinions.slice(0, 6)
@@ -88,7 +91,7 @@ export default function DashboardPage() {
               </div>
             </div>
             <div className="mt-2 h-[180px]">
-              <TopicTrendChart compact />
+              <TopicTrendChart data={topicTrends} compact />
             </div>
             
             {/* Hot Topics */}
@@ -114,7 +117,7 @@ export default function DashboardPage() {
               <h2 className="font-serif text-sm font-bold">热门关键词</h2>
             </div>
             <div className="mt-2">
-              <KeywordCloud compact />
+              <KeywordCloud data={keywords} compact />
             </div>
           </div>
         </div>
@@ -214,7 +217,7 @@ export default function DashboardPage() {
               <h2 className="font-serif text-sm font-bold">观点时间线</h2>
             </div>
             <div className="mt-2">
-              <OpinionTimeline limit={6} compact />
+              <OpinionTimeline data={opinionTimeline} limit={6} compact />
             </div>
           </div>
 

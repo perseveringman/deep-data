@@ -1,8 +1,10 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { SidebarTrigger } from '@/components/ui/sidebar'
-import { dailyReports, channels } from '@/lib/mock-data'
+import { loadReportDetail } from '@/lib/data-loaders/report-detail'
 import { ArrowLeft, Calendar, TrendingUp, TrendingDown, AlertTriangle, Radio, ArrowUpRight, ArrowDownRight } from 'lucide-react'
+
+export const dynamic = 'force-dynamic'
 
 interface ReportDetailPageProps {
   params: Promise<{ date: string }>
@@ -10,7 +12,7 @@ interface ReportDetailPageProps {
 
 export default async function ReportDetailPage({ params }: ReportDetailPageProps) {
   const { date } = await params
-  const report = dailyReports.find((r) => r.date === date)
+  const { report, reports: dailyReports, channels } = await loadReportDetail(date)
 
   if (!report) {
     notFound()

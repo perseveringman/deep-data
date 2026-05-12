@@ -11,6 +11,7 @@ export interface ContentItem {
   publishedAt: string
   duration: string
   durationSeconds: number
+  language?: string
   viewCount?: number
   likeCount?: number
   coverUrl?: string

@@ -1,7 +1,9 @@
 import Link from 'next/link'
 import { SidebarTrigger } from '@/components/ui/sidebar'
-import { deepReports } from '@/lib/mock-data'
+import { loadDeepReports } from '@/lib/data-loaders/deep-reports'
 import { Clock, Star, TrendingUp, Flame } from 'lucide-react'
+
+export const dynamic = 'force-dynamic'
 
 const getCategoryLabel = (category: string) => {
   switch (category) {
@@ -44,7 +46,8 @@ const getStatusLabel = (status: string) => {
   }
 }
 
-export default function DeepReportsPage() {
+export default async function DeepReportsPage() {
+  const deepReports = await loadDeepReports()
   const featuredReport = deepReports.find((r) => r.status === 'featured')
   const otherReports = deepReports.filter((r) => r.id !== featuredReport?.id)
 

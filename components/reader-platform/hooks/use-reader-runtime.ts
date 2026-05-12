@@ -22,6 +22,11 @@ import {
   type ReaderRuntimeProps,
 } from '@/components/reader-platform/runtime'
 import type { TranslationScope } from '@/components/reader-platform/translation'
+import {
+  createDataHubTranslationExecutor,
+  runDataHubAnalysis,
+} from '@/components/reader-platform/datahub-executors'
+import type { ArtifactItem } from '@/lib/api'
 
 import { useReaderSession } from './use-reader-session'
 import { useReaderTranslation } from './use-reader-translation'
@@ -50,18 +55,25 @@ export function useReaderRuntime({
   onAnalysisContextChange,
 }: UseReaderRuntimeOptions) {
   const { snapshot, updateSnapshot } = useReaderSession()
+  const resolvedTranslationExecutor = useMemo(
+    () => translationExecutor ?? createDataHubTranslationExecutor(),
+    [translationExecutor],
+  )
   const {
     canTranslate,
     isTranslating,
     lastResponse,
     error,
     runTranslation,
-  } = useReaderTranslation({ executor: translationExecutor })
+  } = useReaderTranslation({ executor: resolvedTranslationExecutor })
 
   const [annotations, setAnnotations] = useState<ReaderAnnotation[]>(initialAnnotations)
   const [activeAnnotationId, setActiveAnnotationId] = useState<string | undefined>(initialAnnotations[0]?.id)
   const [provider, setProvider] = useState(defaultProvider)
   const [targetLang, setTargetLang] = useState(defaultTargetLang)
+  const [analysisArtifact, setAnalysisArtifact] = useState<ArtifactItem | null>(null)
+  const [analysisError, setAnalysisError] = useState<Error | null>(null)
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
 
   useEffect(() => {
     setAnnotations(initialAnnotations)
@@ -228,7 +240,7 @@ export function useReaderRuntime({
   )
 
   const requestTranslation = useCallback(
-    async (scope: TranslationScope) => {
+    async (scope: TranslationScope, targetLangOverride?: string) => {
       if (!snapshot) {
         throw new Error('Translation requires a reader session snapshot')
       }
@@ -236,7 +248,7 @@ export function useReaderRuntime({
       return runTranslation(
         buildReaderTranslationRequest({
           provider,
-          targetLang,
+          targetLang: targetLangOverride || targetLang,
           scope,
           snapshot: {
             ...snapshot,
@@ -258,6 +270,29 @@ export function useReaderRuntime({
       snapshot,
       targetLang,
     ],
+  )
+
+  const requestAnalysis = useCallback(
+    async (artifactType: 'summary' | 'key_points' | 'entities' = 'summary') => {
+      if (!analysisContext) {
+        throw new Error('Analysis requires a reader context')
+      }
+
+      setIsAnalyzing(true)
+      setAnalysisError(null)
+      try {
+        const response = await runDataHubAnalysis({ context: analysisContext, artifactType })
+        setAnalysisArtifact(response.artifact)
+        return response.artifact
+      } catch (err) {
+        const nextError = err instanceof Error ? err : new Error('DataHub analysis failed')
+        setAnalysisError(nextError)
+        throw nextError
+      } finally {
+        setIsAnalyzing(false)
+      }
+    },
+    [analysisContext],
   )
 
   return {
@@ -282,6 +317,12 @@ export function useReaderRuntime({
       lastResponse,
       error,
       requestTranslation,
+    },
+    analysis: {
+      isAnalyzing,
+      artifact: analysisArtifact,
+      error: analysisError,
+      requestAnalysis,
     },
   }
 }

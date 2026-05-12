@@ -1,8 +1,11 @@
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import { HeatmapChart } from '@/components/charts/heatmap-chart'
-import { crossAnalysisData } from '@/lib/mock-data'
+import { loadComparePageData } from '@/lib/data-loaders/compare'
 
-export default function ComparePage() {
+export const dynamic = 'force-dynamic'
+
+export default async function ComparePage() {
+  const { crossAnalysisData, commonTopics, insights } = await loadComparePageData()
   // 找出最相似和最不同的频道对
   const pairs: { channels: [string, string]; value: number }[] = []
   const { channels: channelNames, matrix } = crossAnalysisData
@@ -19,15 +22,6 @@ export default function ComparePage() {
   const sortedPairs = [...pairs].sort((a, b) => b.value - a.value)
   const mostSimilar = sortedPairs.slice(0, 3)
   const mostDifferent = sortedPairs.slice(-3).reverse()
-
-  // 共同话题统计
-  const commonTopics = [
-    { topic: 'AI 大模型', channelCount: 5, totalMentions: 156 },
-    { topic: '创业融资', channelCount: 4, totalMentions: 98 },
-    { topic: '科技趋势', channelCount: 6, totalMentions: 87 },
-    { topic: '芯片半导体', channelCount: 3, totalMentions: 65 },
-    { topic: '产品设计', channelCount: 2, totalMentions: 42 },
-  ]
 
   return (
     <div className="min-h-screen">
@@ -51,7 +45,7 @@ export default function ComparePage() {
               <h2 className="font-serif text-sm font-bold">话题重合度矩阵</h2>
             </div>
             <div className="mt-2 border border-border p-3">
-              <HeatmapChart compact />
+              <HeatmapChart data={crossAnalysisData} compact />
             </div>
           </div>
 
@@ -153,21 +147,11 @@ export default function ComparePage() {
               <h2 className="font-serif text-sm font-bold">分析洞察</h2>
             </div>
             <div className="mt-2 space-y-2">
-              <div className="border-l-2 border-foreground pl-2 py-1">
-                <p className="text-xs leading-relaxed">
-                  硅谷王川与 Y Combinator 话题重合度最高（72%），两者都聚焦于硅谷科技创业生态。
-                </p>
-              </div>
-              <div className="border-l-2 border-foreground pl-2 py-1">
-                <p className="text-xs leading-relaxed">
-                  李永乐老师与 Y Combinator 差异最大（22%），前者偏科普教育，后者偏商业创投。
-                </p>
-              </div>
-              <div className="border-l-2 border-foreground pl-2 py-1">
-                <p className="text-xs leading-relaxed">
-                  AI 大模型是唯一覆盖 5 个以上频道的话题，显示其在科技内容领域的主导地位。
-                </p>
-              </div>
+              {insights.map((insight) => (
+                <div key={insight} className="border-l-2 border-foreground pl-2 py-1">
+                  <p className="text-xs leading-relaxed">{insight}</p>
+                </div>
+              ))}
             </div>
           </div>
         </div>

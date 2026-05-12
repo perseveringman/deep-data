@@ -12,7 +12,8 @@ function preserveSelection(event: MouseEvent<HTMLButtonElement>) {
 interface SelectionActionBarProps {
   translateDisabledReason?: string | null
   aiDisabledReason?: string | null
-  onTranslate: () => void
+  onTranslateZh: () => void
+  onTranslateEn: () => void
   onAi: () => void
   onNote: () => void
 }
@@ -20,7 +21,8 @@ interface SelectionActionBarProps {
 export function SelectionActionBar({
   translateDisabledReason,
   aiDisabledReason,
-  onTranslate,
+  onTranslateZh,
+  onTranslateEn,
   onAi,
   onNote,
 }: SelectionActionBarProps) {
@@ -31,13 +33,26 @@ export function SelectionActionBar({
         size="sm"
         variant="secondary"
         onMouseDown={preserveSelection}
-        onClick={onTranslate}
+        onClick={onTranslateZh}
         disabled={Boolean(translateDisabledReason)}
-        title={translateDisabledReason ?? 'Alt+T'}
-        aria-label="翻译选中内容"
+        title={translateDisabledReason ?? '翻译为中文'}
+        aria-label="翻译选中内容为中文"
       >
         <Languages className="h-4 w-4" />
-        翻译
+        中译
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        variant="secondary"
+        onMouseDown={preserveSelection}
+        onClick={onTranslateEn}
+        disabled={Boolean(translateDisabledReason)}
+        title={translateDisabledReason ?? 'Translate to English'}
+        aria-label="翻译选中内容为英文"
+      >
+        <Languages className="h-4 w-4" />
+        EN
       </Button>
       <Button
         type="button"
@@ -47,10 +62,10 @@ export function SelectionActionBar({
         onClick={onAi}
         disabled={Boolean(aiDisabledReason)}
         title={aiDisabledReason ?? 'Alt+A'}
-        aria-label="基于选区打开 AI 预览"
+        aria-label="基于选区询问 AI"
       >
         <Sparkles className="h-4 w-4" />
-        AI
+        问 AI
       </Button>
       <Button
         type="button"

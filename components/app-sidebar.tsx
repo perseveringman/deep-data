@@ -25,6 +25,7 @@ import {
   Users,
   Tags,
   Library,
+  MessageSquare,
 } from 'lucide-react'
 
 const navItems = [
@@ -67,6 +68,11 @@ const navItems = [
     title: '深度报告',
     href: '/deep-reports',
     icon: FileText,
+  },
+  {
+    title: '公开对话',
+    href: '/chats',
+    icon: MessageSquare,
   },
 ]
 

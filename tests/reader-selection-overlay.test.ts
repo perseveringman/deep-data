@@ -199,7 +199,7 @@ test('note overlay remains open after highlight creation even if browser selecti
   const source = await readSource('components/reader-platform/hooks/use-selection-overlay-state.ts')
 
   assert.match(source, /const persistsWithoutSelection =\s*mode === 'note' && Boolean\(noteAnnotation\)/)
-  assert.match(source, /if \(persistsWithoutSelection\) {\s*clearCloseTimer\(\)\s*return/s)
+  assert.match(source, /if \(persistsWithoutSelection\) {[\s\S]*clearCloseTimer\(\)[\s\S]*return/)
   assert.match(source, /if \(!hasTextSelection\(selection\) && !persistsWithoutSelection\)/)
 })
 
