@@ -71,6 +71,12 @@ function scopeEnabled(scope: TranslationScope, selection?: ReaderSelection | nul
   }
 }
 
+const scopeLabel: Record<Extract<TranslationScope, 'selection' | 'active-unit' | 'visible'>, string> = {
+  selection: '选区',
+  'active-unit': '当前单元',
+  visible: '可见内容',
+}
+
 export function ReaderWorkspacePanel({
   idPrefix = 'reader-workspace',
   capabilities,
@@ -127,8 +133,8 @@ export function ReaderWorkspacePanel({
   }, [documentId])
 
   return (
-    <div id={getReaderWorkspaceRootId(idPrefix)} className="space-y-3">
-      <div className="rounded border p-3">
+    <div id={getReaderWorkspaceRootId(idPrefix)} className="min-w-0 max-w-full space-y-3 overflow-hidden">
+      <div className="min-w-0 overflow-hidden rounded border p-3">
         <div className="mb-2 flex items-center gap-2 text-sm font-medium">
           <WandSparkles className="h-4 w-4" />
           当前上下文
@@ -137,12 +143,12 @@ export function ReaderWorkspacePanel({
         {selection ? (
           <div className="space-y-2">
             <p className="text-xs font-medium text-muted-foreground">当前选区</p>
-            <blockquote className="rounded border-l-2 border-primary/40 bg-muted/40 px-3 py-2 text-sm">
+            <blockquote className="overflow-hidden break-words rounded border-l-2 border-primary/40 bg-muted/40 px-3 py-2 text-sm">
               {selection.text}
             </blockquote>
             <div className="flex flex-wrap gap-2">
               {readerHighlightColors.map((color) => (
-                <Button key={color} size="sm" variant="outline" onClick={() => onCreateAnnotation(color)}>
+                <Button key={color} size="sm" variant="outline" className="max-w-full" onClick={() => onCreateAnnotation(color)}>
                   高亮 {color}
                 </Button>
               ))}
@@ -153,11 +159,13 @@ export function ReaderWorkspacePanel({
         )}
 
         {activeUnit ? (
-          <div className="mt-3 rounded border bg-muted/30 p-3">
+          <div className="mt-3 min-w-0 overflow-hidden rounded border bg-muted/30 p-3">
             <p className="text-xs font-medium text-muted-foreground">当前单元</p>
-            <p className="mt-1 text-sm font-medium">{activeUnit.title ?? activeUnit.id ?? '当前内容'}</p>
+            <p className="mt-1 line-clamp-2 break-words text-sm font-medium">
+              {activeUnit.title ?? activeUnit.id ?? '当前内容'}
+            </p>
             {(activeUnit.text ?? activeUnit.markdown) ? (
-              <p className="mt-1 line-clamp-4 text-sm text-muted-foreground">
+              <p className="mt-1 line-clamp-4 break-words text-sm text-muted-foreground">
                 {activeUnit.text ?? activeUnit.markdown}
               </p>
             ) : null}
@@ -168,17 +176,17 @@ export function ReaderWorkspacePanel({
       <div
         id={getReaderWorkspaceSectionId(idPrefix, 'translation')}
         tabIndex={-1}
-        className="rounded border p-3 outline-none"
+        className="min-w-0 overflow-hidden rounded border p-3 outline-none"
       >
         <div className="mb-3 flex items-center gap-2 text-sm font-medium">
           <Languages className="h-4 w-4" />
           翻译
         </div>
 
-        <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_7rem]">
+        <div className="grid min-w-0 gap-2">
           <Input value={targetLang} onChange={(event) => onTargetLangChange(event.target.value)} placeholder="目标语言，如 zh-CN" />
           <Select value={provider} onValueChange={(value) => onProviderChange(value as TranslationProvider)}>
-            <SelectTrigger>
+            <SelectTrigger className="min-w-0">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -195,10 +203,11 @@ export function ReaderWorkspacePanel({
               key={scope}
               size="sm"
               variant="outline"
+              className="min-w-0 max-w-full"
               disabled={!canTranslate || isTranslating || !scopeEnabled(scope, selection, activeUnit, capabilities)}
               onClick={() => onTranslate(scope)}
             >
-              翻译 {scope}
+              翻译 {scopeLabel[scope]}
             </Button>
           ))}
         </div>
@@ -219,7 +228,7 @@ export function ReaderWorkspacePanel({
             </div>
 
             {translationResponse.segments.map((segment) => (
-              <div key={segment.id} className="rounded bg-background p-2 text-sm">
+              <div key={segment.id} className="overflow-hidden break-words rounded bg-background p-2 text-sm">
                 {segment.translatedText}
               </div>
             ))}
@@ -230,7 +239,7 @@ export function ReaderWorkspacePanel({
       <div
         id={getReaderWorkspaceSectionId(idPrefix, 'ai')}
         tabIndex={-1}
-        className="rounded border p-3 outline-none"
+        className="min-w-0 overflow-hidden rounded border p-3 outline-none"
       >
         <div className="mb-2 flex items-center gap-2 text-sm font-medium">
           <Sparkles className="h-4 w-4" />
@@ -243,9 +252,9 @@ export function ReaderWorkspacePanel({
         </div>
         {analysisError ? <p className="mb-2 text-xs text-destructive">{analysisError.message}</p> : null}
         {analysisArtifact ? (
-          <div className="mb-2 rounded border bg-muted/30 p-2 text-xs">
-            <div className="font-medium">最新产物：{analysisArtifact.artifact_type}</div>
-            <div className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap text-muted-foreground">
+          <div className="mb-2 min-w-0 overflow-hidden rounded border bg-muted/30 p-2 text-xs">
+            <div className="truncate font-medium">最新产物：{analysisArtifact.artifact_type}</div>
+            <div className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words text-muted-foreground">
               {analysisArtifact.body || analysisArtifact.summary || analysisArtifact.status}
             </div>
           </div>
@@ -262,7 +271,7 @@ export function ReaderWorkspacePanel({
         </pre>
       </div>
 
-      <div className="rounded border p-3">
+      <div className="min-w-0 overflow-hidden rounded border p-3">
         <div className="mb-2 flex items-center gap-2 text-sm font-medium">
           <WandSparkles className="h-4 w-4" />
           文档产物
@@ -274,8 +283,8 @@ export function ReaderWorkspacePanel({
         ) : artifacts.length > 0 ? (
           <div className="space-y-1.5">
             {artifacts.map((artifact) => (
-              <div key={artifact.id} className="flex items-center justify-between rounded border px-2 py-1.5 text-xs">
-                <span className="font-medium">{artifact.artifact_type}</span>
+              <div key={artifact.id} className="flex min-w-0 items-center justify-between gap-2 rounded border px-2 py-1.5 text-xs">
+                <span className="min-w-0 truncate font-medium">{artifact.artifact_type}</span>
                 <Badge variant={artifact.visibility === 'published' ? 'default' : 'secondary'}>
                   {artifact.status}
                 </Badge>
@@ -290,7 +299,7 @@ export function ReaderWorkspacePanel({
       <div
         id={getReaderWorkspaceSectionId(idPrefix, 'annotations')}
         tabIndex={-1}
-        className="h-[28rem] min-h-0 rounded border outline-none"
+        className="h-[28rem] min-h-0 min-w-0 overflow-hidden rounded border outline-none"
       >
         <AnnotationSidebar
           annotations={annotations}

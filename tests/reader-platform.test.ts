@@ -230,6 +230,22 @@ test('findHighlightQuoteMatch tolerates collapsed whitespace and repeated quotes
   assert.deepEqual(second, { start: 20, end: 36 })
 })
 
+test('findHighlightQuoteMatch uses quote context to disambiguate repeated text', async () => {
+  const { findHighlightQuoteMatch } = await importDomHighlights()
+
+  const match = findHighlightQuoteMatch(
+    'one actionExecutor near the top; later actionExecutor inside the selected window',
+    'actionExecutor',
+    [],
+    {
+      prefix: 'later ',
+      suffix: ' inside',
+    },
+  )
+
+  assert.deepEqual(match, { start: 39, end: 53 })
+})
+
 test('renderReaderQuoteHighlights plans matches from one baseline text snapshot', async () => {
   const source = await readFile(
     path.join(process.cwd(), 'components/reader-platform/dom-highlights.ts'),

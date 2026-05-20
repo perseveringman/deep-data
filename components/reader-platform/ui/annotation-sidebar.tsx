@@ -33,7 +33,7 @@ export function AnnotationSidebar({
   onDelete,
 }: AnnotationSidebarProps) {
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
       <div className="border-b p-3">
         <div className="flex items-center gap-2 text-sm font-semibold">
           <NotebookPen className="h-4 w-4" />
@@ -42,12 +42,12 @@ export function AnnotationSidebar({
       </div>
 
       <ScrollArea className="flex-1">
-        <div className="space-y-3 p-3">
+        <div className="min-w-0 space-y-3 p-3">
           {annotations.map((annotation) => (
             <div
               key={annotation.id}
               className={cn(
-                'space-y-3 rounded-lg border p-3 transition-colors',
+                'min-w-0 space-y-3 overflow-hidden rounded-lg border p-3 transition-colors',
                 activeAnnotationId === annotation.id && 'border-primary bg-primary/5',
               )}
             >
@@ -78,7 +78,7 @@ export function AnnotationSidebar({
               </div>
 
               {annotation.range.quote?.exact ? (
-                <blockquote className="rounded border-l-2 border-primary/40 bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+                <blockquote className="overflow-hidden break-words rounded border-l-2 border-primary/40 bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
                   {annotation.range.quote.exact}
                 </blockquote>
               ) : null}

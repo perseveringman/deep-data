@@ -50,6 +50,11 @@ interface HighlightMatchRange {
   end: number
 }
 
+interface HighlightQuoteContext {
+  prefix?: string
+  suffix?: string
+}
+
 function collectHighlightTextSegments(root: HTMLElement): HighlightTextSegment[] {
   const segments: HighlightTextSegment[] = []
   let offset = 0
@@ -125,10 +130,58 @@ function rangesOverlap(a: HighlightMatchRange, b: HighlightMatchRange) {
   return a.start < b.end && b.start < a.end
 }
 
+function commonSuffixLength(a: string, b: string) {
+  let length = 0
+  while (
+    length < a.length &&
+    length < b.length &&
+    a[a.length - 1 - length] === b[b.length - 1 - length]
+  ) {
+    length += 1
+  }
+  return length
+}
+
+function commonPrefixLength(a: string, b: string) {
+  let length = 0
+  while (length < a.length && length < b.length && a[length] === b[length]) {
+    length += 1
+  }
+  return length
+}
+
+function scoreQuoteContext(
+  normalizedContent: NormalizedHighlightText,
+  matchIndex: number,
+  quoteLength: number,
+  context?: HighlightQuoteContext,
+) {
+  const prefix = normalizeHighlightText(context?.prefix ?? '').text
+  const suffix = normalizeHighlightText(context?.suffix ?? '').text
+  let score = 0
+
+  if (prefix) {
+    const before = normalizedContent.text.slice(0, matchIndex).trimEnd()
+    if (!before.endsWith(prefix)) {
+      score += prefix.length - commonSuffixLength(before, prefix)
+    }
+  }
+
+  if (suffix) {
+    const after = normalizedContent.text.slice(matchIndex + quoteLength).trimStart()
+    if (!after.startsWith(suffix)) {
+      score += suffix.length - commonPrefixLength(after, suffix)
+    }
+  }
+
+  return score
+}
+
 export function findHighlightQuoteMatch(
   contentText: string,
   quote: string,
   claimedRanges: HighlightMatchRange[] = [],
+  context?: HighlightQuoteContext,
 ): HighlightMatchRange | null {
   const normalizedContent = normalizeHighlightText(contentText)
   const normalizedQuote = normalizeHighlightText(quote).text
@@ -138,10 +191,11 @@ export function findHighlightQuoteMatch(
   }
 
   let searchStart = 0
+  let bestMatch: { match: HighlightMatchRange; score: number } | null = null
   while (searchStart < normalizedContent.text.length) {
     const matchIndex = normalizedContent.text.indexOf(normalizedQuote, searchStart)
     if (matchIndex === -1) {
-      return null
+      return bestMatch?.match ?? null
     }
 
     const first = normalizedContent.map[matchIndex]
@@ -152,7 +206,21 @@ export function findHighlightQuoteMatch(
     }
 
     if (!claimedRanges.some((claimed) => rangesOverlap(claimed, match))) {
-      return match
+      const score = scoreQuoteContext(
+        normalizedContent,
+        matchIndex,
+        normalizedQuote.length,
+        context,
+      )
+      if (!bestMatch || score < bestMatch.score) {
+        bestMatch = { match, score }
+        if (score === 0 && (context?.prefix || context?.suffix)) {
+          return match
+        }
+        if (!context?.prefix && !context?.suffix) {
+          return match
+        }
+      }
     }
 
     searchStart = matchIndex + 1
@@ -188,6 +256,7 @@ function wrapHighlightSegment(
   } else {
     highlight.className = highlightClassByColor[annotation.color]
   }
+  highlight.style.cursor = 'pointer'
   highlight.textContent = targetNode.textContent
 
   targetNode.parentNode?.replaceChild(highlight, targetNode)
@@ -225,7 +294,10 @@ export function renderReaderQuoteHighlights(
       const quote = annotation.range.quote?.exact?.trim()
       if (!quote) return null
 
-      const match = findHighlightQuoteMatch(contentText, quote, claimedRanges)
+      const match = findHighlightQuoteMatch(contentText, quote, claimedRanges, {
+        prefix: annotation.range.quote?.prefix,
+        suffix: annotation.range.quote?.suffix,
+      })
       if (!match) return null
 
       claimedRanges.push(match)

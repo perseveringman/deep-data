@@ -166,8 +166,8 @@ export const defaultReaderPreferences: ReaderPreferences = {
     textAlign: 'start',
   },
   layout: {
-    tocVisible: true,
-    sidebarVisible: true,
+    tocVisible: false,
+    sidebarVisible: false,
     sidebarSide: 'left',
     pageGap: 16,
     density: 'comfortable',

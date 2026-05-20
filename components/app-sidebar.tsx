@@ -26,6 +26,7 @@ import {
   Tags,
   Library,
   MessageSquare,
+  Twitter,
 } from 'lucide-react'
 
 const navItems = [
@@ -43,6 +44,11 @@ const navItems = [
     title: '内容库',
     href: '/contents',
     icon: Library,
+  },
+  {
+    title: 'X 阅读器',
+    href: '/debug/spatial-reader?fixture=x',
+    icon: Twitter,
   },
   {
     title: '标签系统',
@@ -127,8 +133,9 @@ export function AppSidebar() {
 
               {/* 导航项 */}
               {navItems.map((item) => {
-                const isActive = pathname === item.href || 
-                  (item.href !== '/' && pathname.startsWith(item.href))
+                const itemPath = item.href.split('?')[0]
+                const isActive = pathname === itemPath ||
+                  (itemPath !== '/' && pathname.startsWith(itemPath))
                 return (
                   <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton

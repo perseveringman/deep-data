@@ -30,6 +30,9 @@ interface ReaderSettingsPanelProps {
   onPreferencesChange: (patch: ReaderPreferencesPatch) => void
   onReset?: () => void
   presets?: ReaderPresetDefinition[]
+  triggerClassName?: string
+  triggerSize?: 'icon' | 'icon-sm'
+  triggerVariant?: 'outline' | 'ghost' | 'secondary'
 }
 
 const accentColorOptions = [
@@ -99,6 +102,9 @@ export function ReaderSettingsPanel({
   onPreferencesChange,
   onReset,
   presets = defaultReaderPresets,
+  triggerClassName,
+  triggerSize = 'icon',
+  triggerVariant = 'outline',
 }: ReaderSettingsPanelProps) {
   const availablePresets = useMemo(
     () => presets.filter((preset) => Object.keys(preset.preferences).length > 0 || preset.id === 'default'),
@@ -108,7 +114,13 @@ export function ReaderSettingsPanel({
   return (
     <Sheet>
       <SheetTrigger asChild>
-        <Button variant="outline" size="icon" aria-label="Reader settings">
+        <Button
+          variant={triggerVariant}
+          size={triggerSize}
+          className={triggerClassName}
+          aria-label="Reader settings"
+          title="阅读器设置"
+        >
           <Settings2 className="h-4 w-4" />
         </Button>
       </SheetTrigger>

@@ -15,12 +15,14 @@ import { getThoughtNodeSummary } from './thought-graph'
 
 export function ThoughtSidebar({
   nodes,
+  className,
   onOpenNode,
   onSendNodeToSidebar,
   onCloseNode,
   onDeleteNode,
 }: {
   nodes: ThoughtNode[]
+  className?: string
   onOpenNode: (nodeId: string) => void
   onSendNodeToSidebar: (nodeId: string) => void
   onCloseNode: (nodeId: string) => void
@@ -29,7 +31,12 @@ export function ThoughtSidebar({
   const activeNodes = nodes.filter((node) => node.view.status !== 'closed')
 
   return (
-    <aside className="flex h-full min-h-[640px] w-[360px] shrink-0 flex-col border-l bg-background">
+    <aside
+      className={cn(
+        'flex h-full min-h-[640px] w-[360px] shrink-0 flex-col border-l bg-background',
+        className,
+      )}
+    >
       <div className="border-b px-4 py-3">
         <div className="flex items-center justify-between gap-2">
           <div>
@@ -135,4 +142,3 @@ export function ThoughtSidebar({
     </aside>
   )
 }
-

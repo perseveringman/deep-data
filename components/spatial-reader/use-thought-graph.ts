@@ -14,6 +14,7 @@ import type {
   ThoughtNodeChange,
   ThoughtPoint,
   ThoughtSourceSelection,
+  ThoughtSize,
   ThoughtView,
   ThoughtViewMode,
 } from './thought-graph'
@@ -30,9 +31,9 @@ interface UseThoughtGraphOptions {
   onThoughtNodeChange?: (change: ThoughtNodeChange) => void
 }
 
-function clamp(value: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, value))
-}
+type ThoughtViewPatchInput =
+  | Partial<Pick<ThoughtView, 'position' | 'size'>>
+  | ((index: number) => Partial<Pick<ThoughtView, 'position' | 'size'>> | undefined)
 
 function getDefaultPosition(selection: ThoughtSourceSelection, index: number): ThoughtPoint {
   const side = index % 2 === 0 ? -1 : 1
@@ -47,13 +48,13 @@ function getDefaultPosition(selection: ThoughtSourceSelection, index: number): T
   }
 
   const width = 360
-  const x = side < 0
-    ? anchor.left - width - 48 - depth * 28
-    : anchor.right + 48 + depth * 28
+  const leftX = anchor.left - width - 48 - depth * 28
+  const rightX = anchor.right + 48 + depth * 28
+  const x = side < 0 && leftX > 24 ? leftX : rightX
 
   return {
-    x: clamp(x, 24, Math.max(24, window.innerWidth - width - 24)),
-    y: clamp(anchor.top - 24 + depth * 42, 72, Math.max(72, window.innerHeight - 280)),
+    x: Math.max(24, x),
+    y: Math.max(72, anchor.top - 24 + depth * 42),
   }
 }
 
@@ -62,17 +63,22 @@ function createDefaultView(
   index: number,
   mode: ThoughtViewMode,
   zIndex: number,
+  viewPatch?: Partial<Pick<ThoughtView, 'position' | 'size'>>,
 ): ThoughtView {
   return {
     mode,
-    position: getDefaultPosition(selection, index),
-    size: {
+    position: viewPatch?.position ?? getDefaultPosition(selection, index),
+    size: viewPatch?.size ?? {
       width: 380,
       height: 300,
     },
     status: mode === 'window' ? 'open' : 'minimized',
     zIndex,
   }
+}
+
+function resolveViewPatch(view: ThoughtViewPatchInput | undefined, index: number) {
+  return typeof view === 'function' ? view(index) : view
 }
 
 export function useThoughtGraph({
@@ -83,7 +89,9 @@ export function useThoughtGraph({
   onThoughtNodeChange,
 }: UseThoughtGraphOptions) {
   const [nodes, setNodes] = useState<ThoughtNode[]>(initialNodes)
-  const zIndexRef = useRef(220)
+  const zIndexRef = useRef(
+    Math.max(220, ...initialNodes.map((node) => node.view.zIndex)),
+  )
 
   const getNextZIndex = useCallback(() => {
     zIndexRef.current += 1
@@ -203,10 +211,12 @@ export function useThoughtGraph({
         mode = 'window',
         sourceNode,
         fanIndex,
+        view,
       }: {
         mode?: ThoughtViewMode
         sourceNode?: ThoughtNode | null
         fanIndex?: number
+        view?: Partial<Pick<ThoughtView, 'position' | 'size'>>
       } = {},
     ) => {
       const timestamp = new Date().toISOString()
@@ -218,6 +228,8 @@ export function useThoughtGraph({
         sourceRange: selection.range,
         sourceText: selection.text,
         sourceNodeId: selection.sourceNodeId,
+        sourceReaderWindowId:
+          selection.sourceReaderWindowId ?? sourceNode?.sourceReaderWindowId,
         action: snapshotThoughtAction(action),
         contentMarkdown: '',
         status: 'pending',
@@ -226,6 +238,7 @@ export function useThoughtGraph({
           fanIndex ?? nodes.length,
           mode,
           getNextZIndex(),
+          view,
         ),
         createdAt: timestamp,
         updatedAt: timestamp,
@@ -253,12 +266,14 @@ export function useThoughtGraph({
       options?: {
         mode?: ThoughtViewMode
         sourceNode?: ThoughtNode | null
+        view?: ThoughtViewPatchInput
       },
     ) =>
       actions.map((action, index) =>
         createAiNode(selection, action, {
           ...options,
           fanIndex: index,
+          view: resolveViewPatch(options?.view, index),
         }),
       ),
     [createAiNode],
@@ -270,9 +285,13 @@ export function useThoughtGraph({
       {
         contentMarkdown = selection.text,
         mode = 'sidebar-card',
+        size,
+        position,
       }: {
         contentMarkdown?: string
         mode?: ThoughtViewMode
+        size?: ThoughtSize
+        position?: ThoughtPoint
       } = {},
     ) => {
       const timestamp = new Date().toISOString()
@@ -284,10 +303,17 @@ export function useThoughtGraph({
         sourceRange: selection.range,
         sourceText: selection.text,
         sourceNodeId: selection.sourceNodeId,
+        sourceReaderWindowId: selection.sourceReaderWindowId,
         color: 'yellow',
         contentMarkdown,
         status: 'done',
-        view: createDefaultView(selection, nodes.length, mode, getNextZIndex()),
+        view: createDefaultView(
+          selection,
+          nodes.length,
+          mode,
+          getNextZIndex(),
+          { position, size },
+        ),
         createdAt: timestamp,
         updatedAt: timestamp,
       }
@@ -315,7 +341,6 @@ export function useThoughtGraph({
           position: viewPatch.position ?? node.view.position,
           size: viewPatch.size ?? node.view.size,
         },
-        updatedAt: new Date().toISOString(),
       }))
     },
     [patchNode],
@@ -384,4 +409,3 @@ export function useThoughtGraph({
     clearNodes,
   }
 }
-

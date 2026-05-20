@@ -1,4 +1,4 @@
-export type ReaderType = 'podcast' | 'youtube' | 'markdown' | 'epub' | 'pdf'
+export type ReaderType = 'podcast' | 'youtube' | 'markdown' | 'epub' | 'pdf' | 'x'
 
 export interface ReaderDocumentIdentity {
   readerType: ReaderType

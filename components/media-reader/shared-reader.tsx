@@ -10,10 +10,14 @@ import {
   type ReactNode,
   type RefObject,
 } from 'react'
-import { ArrowUp, FileText, Hash, Info, Lightbulb, List } from 'lucide-react'
+import { ArrowUp, FileText, Hash, Info, Lightbulb, List, PanelLeft, PanelRight } from 'lucide-react'
 
 import { ReaderSettingsPanel } from '@/components/document-reader/shared'
 import { Button } from '@/components/ui/button'
+import {
+  ReaderChromeActions,
+  useReaderChromeActionsTarget,
+} from '@/components/reader-platform/ui/reader-chrome-actions'
 import {
   getReaderPreferenceCssVariables,
   type ReaderPreferenceCapabilities,
@@ -184,12 +188,23 @@ export function SharedReader({
   const lastProgrammaticScrollTopRef = useRef<number | null>(null)
   const stableProgrammaticFramesRef = useRef(0)
   const resolvedPreferences = preferences
+  const chromeActionsTarget = useReaderChromeActionsTarget()
+  const hasExternalChrome = chromeActionsTarget !== undefined
+  const chromeButtonClassName = hasExternalChrome
+    ? 'h-7 w-7 text-slate-500 hover:bg-slate-100 hover:text-slate-900 [&_svg]:h-3.5 [&_svg]:w-3.5'
+    : undefined
+  const chromeButtonActiveClassName = hasExternalChrome ? 'bg-slate-100 text-slate-900' : undefined
+  const chromeButtonSize = hasExternalChrome ? 'icon-sm' : 'icon'
+  const chromeButtonVariant = hasExternalChrome ? 'ghost' : 'outline'
+  const chromeIconClassName = hasExternalChrome ? 'h-3.5 w-3.5' : 'h-4 w-4'
   const cssVars = useMemo(
     () => (resolvedPreferences ? (getReaderPreferenceCssVariables(resolvedPreferences) as CSSProperties) : {}),
     [resolvedPreferences],
   )
   const showSidebar = resolvedPreferences?.layout.sidebarVisible !== false
   const sidebarOnLeft = showSidebar && resolvedPreferences?.layout.sidebarSide === 'left'
+  const sidebarControlSide = resolvedPreferences?.layout.sidebarSide === 'left' ? 'left' : 'right'
+  const SidebarPanelIcon = sidebarControlSide === 'left' ? PanelLeft : PanelRight
   const scrollBehavior = resolvedPreferences?.behavior.reduceMotion ? 'auto' : 'smooth'
   const isAutoFollowPaused = autoFollowMode === 'free'
   const selectionGesture = useMediaSelectionGesture()
@@ -318,6 +333,37 @@ export function SharedReader({
     setAutoFollowMode('following')
     scrollActiveItemIntoView()
   }, [scrollActiveItemIntoView])
+  const toolbarControls = resolvedPreferences && onPreferencesChange ? (
+    <ReaderChromeActions>
+      <div className="flex items-center gap-1">
+        {preferenceCapabilities?.layout.sidebarVisible ? (
+          <Button
+            type="button"
+            variant={hasExternalChrome ? 'ghost' : showSidebar ? 'secondary' : 'ghost'}
+            size={chromeButtonSize}
+            className={cn(chromeButtonClassName, showSidebar && chromeButtonActiveClassName)}
+            onClick={() => onPreferencesChange({ layout: { sidebarVisible: !showSidebar } })}
+            aria-label={showSidebar ? '隐藏阅读上下文侧栏' : '展开阅读上下文侧栏'}
+            title={showSidebar ? '隐藏阅读上下文' : '展开阅读上下文'}
+          >
+            <SidebarPanelIcon className={chromeIconClassName} />
+          </Button>
+        ) : null}
+
+        {preferenceCapabilities ? (
+          <ReaderSettingsPanel
+            preferences={resolvedPreferences}
+            capabilities={preferenceCapabilities}
+            onPreferencesChange={onPreferencesChange}
+            onReset={onPreferencesReset}
+            triggerClassName={chromeButtonClassName}
+            triggerSize={chromeButtonSize}
+            triggerVariant={chromeButtonVariant}
+          />
+        ) : null}
+      </div>
+    </ReaderChromeActions>
+  ) : null
 
   return (
     <div
@@ -330,16 +376,11 @@ export function SharedReader({
       }}
     >
       {overlay}
-      {resolvedPreferences && preferenceCapabilities && onPreferencesChange ? (
+      {toolbarControls && !hasExternalChrome ? (
         <div className="col-span-12 flex justify-end">
-          <ReaderSettingsPanel
-            preferences={resolvedPreferences}
-            capabilities={preferenceCapabilities}
-            onPreferencesChange={onPreferencesChange}
-            onReset={onPreferencesReset}
-          />
+          {toolbarControls}
         </div>
-      ) : null}
+      ) : toolbarControls}
 
       {showSidebar && sidebarOnLeft ? (
         <div className="col-span-12 lg:col-span-4">

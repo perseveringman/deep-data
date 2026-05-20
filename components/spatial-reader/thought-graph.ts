@@ -54,6 +54,7 @@ export interface ThoughtSourceSelection {
   range: ReaderRange
   anchorRect?: ReaderSelection['anchorRect']
   sourceNodeId?: string
+  sourceReaderWindowId?: string
 }
 
 export interface ThoughtAiNode {
@@ -64,6 +65,7 @@ export interface ThoughtAiNode {
   sourceRange: ReaderRange
   sourceText: string
   sourceNodeId?: string
+  sourceReaderWindowId?: string
   action: ThoughtActionSnapshot
   contentMarkdown: string
   status: ThoughtNodeStatus
@@ -81,6 +83,7 @@ export interface ThoughtNoteNode {
   sourceRange: ReaderRange
   sourceText: string
   sourceNodeId?: string
+  sourceReaderWindowId?: string
   color: ReaderHighlightColor
   contentMarkdown: string
   status: 'done'
@@ -150,6 +153,10 @@ export function getThoughtWindowElementId(nodeId: string) {
   return `spatial-window-${nodeId}`
 }
 
+export function getSpatialReaderWindowElementId(windowId: string) {
+  return `spatial-reader-window-${windowId}`
+}
+
 export function getThoughtAnnotations(nodes: ThoughtNode[]): ReaderAnnotation[] {
   return nodes
     .map((node) => ({
@@ -165,6 +172,26 @@ export function getThoughtAnnotations(nodes: ThoughtNode[]): ReaderAnnotation[] 
     }))
 }
 
+export function getThoughtAnnotationFingerprint(nodes: ThoughtNode[]) {
+  return JSON.stringify(
+    nodes.map((node) => ({
+      id: node.id,
+      documentId: node.documentId,
+      readerType: node.readerType,
+      sourceRange: node.sourceRange,
+      sourceText: node.sourceText,
+      sourceNodeId: node.sourceNodeId,
+      sourceReaderWindowId: node.sourceReaderWindowId,
+      color: node.kind === 'note' ? node.color : node.action.color,
+      actionId: node.kind === 'ai-result' ? node.action.id : undefined,
+      contentMarkdown: node.contentMarkdown,
+      status: node.status,
+      error: node.kind === 'ai-result' ? node.error : undefined,
+      createdAt: node.createdAt,
+    })),
+  )
+}
+
 export function getThoughtEdges(nodes: ThoughtNode[]) {
   return nodes
     .filter((node) => Boolean(node.sourceNodeId))
@@ -177,10 +204,15 @@ export function getThoughtEdges(nodes: ThoughtNode[]) {
 export function buildSourceSelectionFromReaderSelection(
   selection: ReaderSelection,
 ): ThoughtSourceSelection {
+  const spatialSelection = selection as ReaderSelection &
+    Pick<ThoughtSourceSelection, 'sourceNodeId' | 'sourceReaderWindowId'>
+
   return {
     text: selection.text,
     range: selection.range,
     anchorRect: selection.anchorRect,
+    sourceNodeId: spatialSelection.sourceNodeId,
+    sourceReaderWindowId: spatialSelection.sourceReaderWindowId,
   }
 }
 

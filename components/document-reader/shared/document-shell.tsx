@@ -1,6 +1,6 @@
 'use client'
 
-import { BookOpenText, ChevronLeft, ChevronRight, Search } from 'lucide-react'
+import { BookOpenText, ChevronLeft, ChevronRight, PanelLeft, PanelRight, Search } from 'lucide-react'
 import type { CSSProperties, ReactNode } from 'react'
 
 import type {
@@ -20,6 +20,10 @@ import {
 } from '@/components/reader-platform'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import {
+  ReaderChromeActions,
+  useReaderChromeActionsTarget,
+} from '@/components/reader-platform/ui/reader-chrome-actions'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
@@ -140,10 +144,23 @@ export function DocumentShell({
   const mergedPreferenceCapabilities = mergePreferenceCapabilities(preferenceCapabilities)
   const mergedPreferences = resolveReaderPreferences({ systemDefaults: defaultReaderPreferences }, preferences)
   const cssVars = getReaderPreferenceCssVariables(mergedPreferences) as CSSProperties
+  const chromeActionsTarget = useReaderChromeActionsTarget()
+  const hasExternalChrome = chromeActionsTarget !== undefined
+  const chromeButtonClassName = hasExternalChrome
+    ? 'h-7 w-7 text-slate-500 hover:bg-slate-100 hover:text-slate-900 [&_svg]:h-3.5 [&_svg]:w-3.5'
+    : undefined
+  const chromeButtonActiveClassName = hasExternalChrome ? 'bg-slate-100 text-slate-900' : undefined
+  const chromeButtonSize = hasExternalChrome ? 'icon-sm' : 'icon'
+  const chromeButtonVariant = hasExternalChrome ? 'ghost' : 'outline'
+  const chromeIconClassName = hasExternalChrome ? 'h-3.5 w-3.5' : 'h-4 w-4'
+  const navigationPanelAvailable = mergedCapabilities.toc || mergedCapabilities.search
+  const contextSidebarSide = mergedPreferences.layout.sidebarSide === 'left' ? 'left' : 'right'
   const showNavigationPanel =
-    mergedPreferences.layout.tocVisible !== false && (mergedCapabilities.toc || mergedCapabilities.search)
+    mergedPreferences.layout.tocVisible !== false && navigationPanelAvailable
   const showContextSidebar = mergedPreferences.layout.sidebarVisible !== false
-  const contextSidebarOnLeft = showContextSidebar && mergedPreferences.layout.sidebarSide === 'left'
+  const contextSidebarOnLeft = showContextSidebar && contextSidebarSide === 'left'
+  const NavigationPanelIcon = showNavigationPanel && contextSidebarOnLeft ? PanelRight : PanelLeft
+  const ContextSidebarIcon = contextSidebarSide === 'left' ? PanelLeft : PanelRight
   const panelStyle = {
     backgroundColor: 'var(--reader-surface-background)',
     color: 'var(--reader-surface-foreground)',
@@ -155,6 +172,80 @@ export function DocumentShell({
     color: 'var(--reader-muted-foreground)',
     borderColor: 'var(--reader-border-color)',
   } satisfies CSSProperties
+  const updateLayoutPreference = (layout: NonNullable<ReaderPreferencesPatch['layout']>) => {
+    onPreferencesChange?.({ layout })
+  }
+  const toolbarControls = (
+    <ReaderChromeActions>
+      <div className="flex items-center gap-1">
+        {toolbarStart}
+
+        {onPrev ? (
+          <Button
+            variant={chromeButtonVariant}
+            size={chromeButtonSize}
+            className={chromeButtonClassName}
+            onClick={onPrev}
+            aria-label="Previous"
+          >
+            <ChevronLeft className={chromeIconClassName} />
+          </Button>
+        ) : null}
+
+        {onNext ? (
+          <Button
+            variant={chromeButtonVariant}
+            size={chromeButtonSize}
+            className={chromeButtonClassName}
+            onClick={onNext}
+            aria-label="Next"
+          >
+            <ChevronRight className={chromeIconClassName} />
+          </Button>
+        ) : null}
+
+        <ReaderSettingsPanel
+          preferences={mergedPreferences}
+          capabilities={mergedPreferenceCapabilities}
+          onPreferencesChange={(patch) => onPreferencesChange?.(patch)}
+          onReset={onPreferencesReset}
+          triggerClassName={chromeButtonClassName}
+          triggerSize={chromeButtonSize}
+          triggerVariant={chromeButtonVariant}
+        />
+
+        {navigationPanelAvailable ? (
+          <Button
+            type="button"
+            variant={hasExternalChrome ? 'ghost' : showNavigationPanel ? 'secondary' : 'ghost'}
+            size={chromeButtonSize}
+            className={cn(chromeButtonClassName, showNavigationPanel && chromeButtonActiveClassName)}
+            onClick={() => updateLayoutPreference({ tocVisible: !showNavigationPanel })}
+            aria-label={showNavigationPanel ? '隐藏目录与搜索侧栏' : '展开目录与搜索侧栏'}
+            title={showNavigationPanel ? '隐藏目录与搜索' : '展开目录与搜索'}
+          >
+            <NavigationPanelIcon className={chromeIconClassName} />
+          </Button>
+        ) : null}
+
+        {mergedPreferenceCapabilities.layout.sidebarVisible ? (
+          <Button
+            type="button"
+            variant={hasExternalChrome ? 'ghost' : showContextSidebar ? 'secondary' : 'ghost'}
+            size={chromeButtonSize}
+            className={cn(chromeButtonClassName, showContextSidebar && chromeButtonActiveClassName)}
+            onClick={() => updateLayoutPreference({ sidebarVisible: !showContextSidebar })}
+            aria-label={showContextSidebar ? '隐藏阅读上下文侧栏' : '展开阅读上下文侧栏'}
+            title={showContextSidebar ? '隐藏阅读上下文' : '展开阅读上下文'}
+          >
+            <ContextSidebarIcon className={chromeIconClassName} />
+          </Button>
+        ) : null}
+
+        {toolbarEnd}
+      </div>
+    </ReaderChromeActions>
+  )
 
   return (
     <div
@@ -258,38 +349,21 @@ export function DocumentShell({
       ) : null}
 
       <main className="min-w-0 space-y-3">
-        <header
-          className="flex flex-wrap items-center gap-2 rounded-lg border p-[var(--reader-toolbar-padding)]"
-          style={panelStyle}
-        >
-          <div className="min-w-0 flex-1">
-            {subtitle ? <p className="text-xs uppercase tracking-wide text-muted-foreground">{subtitle}</p> : null}
-            {title ? <h1 className="truncate text-lg font-semibold">{title}</h1> : null}
-          </div>
+        {hasExternalChrome ? (
+          toolbarControls
+        ) : (
+          <header
+            className="flex flex-wrap items-center gap-2 rounded-lg border p-[var(--reader-toolbar-padding)]"
+            style={panelStyle}
+          >
+            <div className="min-w-0 flex-1">
+              {subtitle ? <p className="text-xs uppercase tracking-wide text-muted-foreground">{subtitle}</p> : null}
+              {title ? <h1 className="truncate text-lg font-semibold">{title}</h1> : null}
+            </div>
 
-          {toolbarStart}
-
-          {onPrev ? (
-            <Button variant="outline" size="icon" onClick={onPrev} aria-label="Previous">
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-          ) : null}
-
-          {onNext ? (
-            <Button variant="outline" size="icon" onClick={onNext} aria-label="Next">
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          ) : null}
-
-          <ReaderSettingsPanel
-            preferences={mergedPreferences}
-            capabilities={mergedPreferenceCapabilities}
-            onPreferencesChange={(patch) => onPreferencesChange?.(patch)}
-            onReset={onPreferencesReset}
-          />
-
-          {toolbarEnd}
-        </header>
+            {toolbarControls}
+          </header>
+        )}
 
         <div
           className={cn(

@@ -42,6 +42,7 @@ import type {
   ThoughtSourceSelection,
 } from './thought-graph'
 import {
+  getThoughtAnnotationFingerprint,
   getThoughtAnnotations,
   getThoughtHighlightElementId,
 } from './thought-graph'
@@ -210,6 +211,15 @@ export function SpatialMarkdownReader({
     actionExecutor,
     onThoughtNodeChange,
   })
+  const thoughtAnnotationFingerprint = getThoughtAnnotationFingerprint(graph.nodes)
+  const thoughtAnnotations = useMemo(
+    () => getThoughtAnnotations(graph.nodes),
+    [thoughtAnnotationFingerprint],
+  )
+  const thoughtDecorationNodes = useMemo(
+    () => graph.nodes,
+    [thoughtAnnotationFingerprint],
+  )
 
   useEffect(() => {
     if (typeof window === 'undefined' || initialNodes) return
@@ -296,20 +306,26 @@ export function SpatialMarkdownReader({
   }, [markdown])
 
   useEffect(() => {
-    renderReaderQuoteHighlights(contentRef.current, getThoughtAnnotations(graph.nodes))
+    renderReaderQuoteHighlights(contentRef.current, thoughtAnnotations)
     decorateThoughtHighlights({
       root: contentRef.current,
-      nodes: graph.nodes,
+      nodes: thoughtDecorationNodes,
       onOpenNode: (nodeId) => {
         graph.setNodeMode(nodeId, 'window')
         graph.bringNodeToFront(nodeId)
       },
     })
-  }, [graph.bringNodeToFront, graph.nodes, graph.setNodeMode, markdown])
+  }, [
+    graph.bringNodeToFront,
+    graph.setNodeMode,
+    markdown,
+    thoughtAnnotations,
+    thoughtDecorationNodes,
+  ])
 
   const runAction = useCallback(
     (sourceSelection: ThoughtSourceSelection, action: ThoughtActionDefinition) => {
-      graph.createAiNode(sourceSelection, action, { mode: 'window' })
+      graph.createAiNode(sourceSelection, action, { mode: 'inline' })
       clearSelection()
     },
     [clearSelection, graph],
@@ -317,7 +333,7 @@ export function SpatialMarkdownReader({
 
   const runAllActions = useCallback(
     (sourceSelection: ThoughtSourceSelection) => {
-      graph.createAiNodes(sourceSelection, actions, { mode: 'window' })
+      graph.createAiNodes(sourceSelection, actions, { mode: 'inline' })
       clearSelection()
     },
     [actions, clearSelection, graph],
@@ -357,7 +373,7 @@ export function SpatialMarkdownReader({
                 <Badge variant="outline">Spatial Fusion</Badge>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
-                选中文本即可展开 AI 浮窗；结果节点可在画布、Dock 与侧栏之间切换。
+                选中文本会创建高亮，点击高亮即可展开 AI 浮窗。
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -471,19 +487,25 @@ export function SpatialMarkdownReader({
         hidden={canvasHidden}
         onMoveNode={moveNode}
         onBringNodeToFront={graph.bringNodeToFront}
+        onOpenNode={(nodeId) => {
+          graph.setNodeMode(nodeId, 'window')
+          graph.bringNodeToFront(nodeId)
+        }}
         onMinimizeNode={(nodeId) => graph.updateNodeView(nodeId, { status: 'minimized' })}
         onCloseNode={(nodeId) => graph.setNodeMode(nodeId, 'sidebar-card')}
         onSendNodeToSidebar={(nodeId) => graph.setNodeMode(nodeId, 'sidebar-card')}
-        onCreateChildNode={(sourceSelection, action, sourceNode) => {
+        onCreateChildNode={(sourceSelection, action, sourceNode, view) => {
           graph.createAiNode(sourceSelection, action, {
-            mode: 'window',
+            mode: 'inline',
             sourceNode,
+            view,
           })
         }}
-        onCreateChildNodes={(sourceSelection, sourceNode) => {
+        onCreateChildNodes={(sourceSelection, sourceNode, view) => {
           graph.createAiNodes(sourceSelection, actions, {
-            mode: 'window',
+            mode: 'inline',
             sourceNode,
+            view,
           })
         }}
       />

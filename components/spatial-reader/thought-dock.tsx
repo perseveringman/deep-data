@@ -1,24 +1,29 @@
 'use client'
 
-import { Boxes, Eye, EyeOff, Network, Trash2 } from 'lucide-react'
+import { BookOpenText, Boxes, Eye, EyeOff, Network, Trash2 } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 import { ThoughtActionIcon } from './thought-action-bar'
+import type { SpatialReaderWindowState } from './spatial-reader-window'
 import type { ThoughtNode } from './thought-graph'
 
 export function ThoughtDock({
   nodes,
+  readerWindows = [],
   canvasHidden,
   onToggleCanvas,
+  onOpenReaderWindow,
   onOpenNode,
   onClear,
 }: {
   nodes: ThoughtNode[]
+  readerWindows?: SpatialReaderWindowState[]
   canvasHidden: boolean
   onToggleCanvas: () => void
+  onOpenReaderWindow?: (windowId: string) => void
   onOpenNode: (nodeId: string) => void
   onClear: () => void
 }) {
@@ -26,6 +31,7 @@ export function ThoughtDock({
   const minimizedNodes = activeNodes.filter(
     (node) => node.view.mode === 'window' && node.view.status === 'minimized',
   )
+  const minimizedReaderWindows = readerWindows.filter((window) => window.status === 'minimized')
 
   return (
     <div className="fixed bottom-4 left-1/2 z-40 flex max-w-[min(92vw,980px)] -translate-x-1/2 items-center gap-2 rounded-2xl border bg-background/90 px-3 py-2 shadow-2xl backdrop-blur supports-[backdrop-filter]:bg-background/75">
@@ -37,9 +43,33 @@ export function ThoughtDock({
         className="gap-2"
       >
         {canvasHidden ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-        {canvasHidden ? '显示画布' : '隐藏画布'}
+        {canvasHidden ? '显示节点' : '隐藏节点'}
       </Button>
       <div className="h-6 w-px bg-border" />
+      {readerWindows.length > 0 ? (
+        <>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <BookOpenText className="h-4 w-4" />
+            Reader
+            <Badge variant="secondary">
+              {readerWindows.filter((window) => window.status !== 'closed').length}
+            </Badge>
+          </div>
+          {minimizedReaderWindows.map((window) => (
+            <button
+              key={window.id}
+              type="button"
+              className="flex h-9 min-w-9 items-center justify-center rounded-xl border bg-muted/50 px-2 text-xs transition hover:bg-muted"
+              onClick={() => onOpenReaderWindow?.(window.id)}
+              title={window.title}
+            >
+              <BookOpenText className="h-4 w-4" />
+              <span className="ml-1 max-w-24 truncate">{window.title}</span>
+            </button>
+          ))}
+          <div className="h-6 w-px bg-border" />
+        </>
+      ) : null}
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <Network className="h-4 w-4" />
         ThoughtGraph
@@ -86,4 +116,3 @@ export function ThoughtDock({
     </div>
   )
 }
-

@@ -22,6 +22,26 @@ export interface ContentItem {
   contentFile: string
 }
 
+export interface XFeedItem {
+  id: string
+  sourceId: string
+  sourceTitle: string
+  sourceKind: 'profile' | 'for-you' | 'following' | 'timeline'
+  authorHandle: string
+  authorName: string
+  text: string
+  url: string
+  canonicalUrl: string
+  publishedAt: string
+  fetchedAt?: string
+  isReply: boolean
+  replyCount: number
+  retweetCount: number
+  likeCount: number
+  viewCount: number
+  externalUrls: string[]
+}
+
 export interface TranscriptSegment {
   speaker?: string
   startMs: number

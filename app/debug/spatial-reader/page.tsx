@@ -3,10 +3,26 @@ import { ArrowLeft, Network } from 'lucide-react'
 
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import { getReaderDebugFixtures } from '@/lib/reader-debug-fixtures'
+import { loadXFeedItems } from '@/lib/data-loaders/x-feed'
 import { SpatialReaderWorkbench } from './spatial-reader-workbench'
 
-export default async function SpatialReaderDebugPage() {
-  const fixtures = await getReaderDebugFixtures()
+interface SpatialReaderDebugPageProps {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>
+}
+
+export const dynamic = 'force-dynamic'
+
+export default async function SpatialReaderDebugPage({
+  searchParams,
+}: SpatialReaderDebugPageProps) {
+  const [fixtures, xFeedItems] = await Promise.all([
+    getReaderDebugFixtures(),
+    loadXFeedItems(),
+  ])
+  const params = await searchParams
+  const e2e = Boolean(params?.e2e ?? params?.verify)
+  const fixtureParam = params?.fixture
+  const initialFixtureId = Array.isArray(fixtureParam) ? fixtureParam[0] : fixtureParam
 
   return (
     <>
@@ -26,15 +42,12 @@ export default async function SpatialReaderDebugPage() {
       </header>
 
       <div className="space-y-4 px-4 py-3">
-        <div className="rounded-lg border bg-card p-4">
-          <h1 className="text-xl font-semibold">融合版 Spatial Reader</h1>
-          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-            该页面把 Deep-Data 的 Locator/Selection/Highlight 基座与 Shadow Reader 的浮窗、Dock、贝塞尔连线融合在一起。
-            五类 reader 都通过同一个 SpatialFrame 接入：选中文本后可创建 AI ThoughtNode，并在窗口内容里继续选中文字发散子节点。
-          </p>
-        </div>
-
-        <SpatialReaderWorkbench fixtures={fixtures} />
+        <SpatialReaderWorkbench
+          fixtures={fixtures}
+          xFeedItems={xFeedItems}
+          initialFixtureId={initialFixtureId}
+          e2e={e2e}
+        />
       </div>
     </>
   )

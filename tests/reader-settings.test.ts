@@ -122,3 +122,41 @@ test('readers wire settings persistence and runtime behavior into shared surface
   assert.match(sharedSource, /ReaderSettingsPanel/)
   assert.match(sharedSource, /preferences=\{resolvedPreferences\}/)
 })
+
+test('reader shells default to content-only and expose sidebar toggles in the title bar', async () => {
+  const preferencesSource = await readFile(
+    path.join(process.cwd(), 'components/reader-platform/preferences.ts'),
+    'utf8',
+  )
+  const shellSource = await readFile(
+    path.join(process.cwd(), 'components/document-reader/shared/document-shell.tsx'),
+    'utf8',
+  )
+  const sharedSource = await readFile(
+    path.join(process.cwd(), 'components/media-reader/shared-reader.tsx'),
+    'utf8',
+  )
+  const spatialWindowSource = await readFile(
+    path.join(process.cwd(), 'components/spatial-reader/spatial-reader-window.tsx'),
+    'utf8',
+  )
+
+  assert.match(preferencesSource, /tocVisible: false/)
+  assert.match(preferencesSource, /sidebarVisible: false/)
+  assert.match(spatialWindowSource, /ReaderChromeActionsProvider/)
+  assert.match(shellSource, /hasExternalChrome/)
+  assert.match(shellSource, /ReaderChromeActions/)
+  assert.match(shellSource, /chromeButtonClassName/)
+  assert.match(shellSource, /triggerClassName=\{chromeButtonClassName\}/)
+  assert.match(shellSource, /triggerSize=\{chromeButtonSize\}/)
+  assert.match(shellSource, /triggerVariant=\{chromeButtonVariant\}/)
+  assert.match(shellSource, /aria-label=\{showNavigationPanel \? '隐藏目录与搜索侧栏' : '展开目录与搜索侧栏'\}/)
+  assert.match(shellSource, /aria-label=\{showContextSidebar \? '隐藏阅读上下文侧栏' : '展开阅读上下文侧栏'\}/)
+  assert.match(sharedSource, /hasExternalChrome/)
+  assert.match(sharedSource, /ReaderChromeActions/)
+  assert.match(sharedSource, /chromeButtonClassName/)
+  assert.match(sharedSource, /triggerClassName=\{chromeButtonClassName\}/)
+  assert.match(sharedSource, /triggerSize=\{chromeButtonSize\}/)
+  assert.match(sharedSource, /triggerVariant=\{chromeButtonVariant\}/)
+  assert.match(sharedSource, /aria-label=\{showSidebar \? '隐藏阅读上下文侧栏' : '展开阅读上下文侧栏'\}/)
+})
